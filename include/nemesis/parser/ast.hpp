@@ -316,7 +316,7 @@ namespace nemesis {
                 /**
                  * Substitution of generic parameters
                  */
-                const substitution* substitution = nullptr;
+                const struct substitution* substitution = nullptr;
                 /**
                  * Constructs an empty annotation
                  */
@@ -5655,15 +5655,12 @@ namespace nemesis {
              */
             ast::pointers<ast::declaration> saved;
             /**
-             * List of all type declarations
+             * List of all processed types, including:
+             * [*] the ones declared with a name
+             * [*] anonymous types which needs construction, like anonymous struct, tuple or variant
+             * They are added in the same order in which are resolved, so code generator can emit code correcly
              */
-            std::vector<const ast::type_declaration*> types;
-            /**
-             * List of all types which haven't any name declaration, like
-             * temporary structure '(a: i32, b: string)', temporary tuple '(i32, string)'
-             * or temporary variant 'i32 | string'
-             */
-            ast::pointers<ast::type> anonymous_types;
+            ast::pointers<ast::type> types;
             /**
              * List of all non-associated function declarations
              */

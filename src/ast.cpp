@@ -259,7 +259,7 @@ namespace nemesis {
 
                 if (!member->generics().empty()) {
                     ast::pointers<ast::expression> args;
-                    for (int i = 1; i < member->generics().size(); ++i) {
+                    for (auto i = 1; i < member->generics().size(); ++i) {
                         if (auto texpr = std::dynamic_pointer_cast<type_expression>(member->generics().at(i))) {
                             args.push_back(texpr->as_expression());
                         }
@@ -459,7 +459,7 @@ namespace nemesis {
             pointer<expression> expr = static_cast<const type_expression*>(types_.front().get())->as_expression();
             token line = token(token::kind::line, utf8::span::builder().concat("|").build(), source_location());
 
-            for (int i = 1; i < types_.size(); ++i) {
+            for (auto i = 1; i < types_.size(); ++i) {
                 auto right = static_cast<const type_expression*>(types_.at(i).get())->as_expression();
                 expr = create<binary_expression>(source_range(range_.begin(), types_.at(i)->range().end()), line, expr, right);
             }

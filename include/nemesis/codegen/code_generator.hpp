@@ -81,6 +81,7 @@ namespace nemesis {
         void visit(const ast::if_expression& expr);
         void visit(const ast::when_cast_expression& expr);
         void visit(const ast::when_pattern_expression& expr);
+        void visit(const ast::when_expression& expr);
 
         void visit(const ast::expression_statement& stmt);
         void visit(const ast::assignment_statement& stmt);

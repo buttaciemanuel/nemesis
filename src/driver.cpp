@@ -122,7 +122,7 @@ namespace nemesis {
     {
         unsigned files = 0;
         // parse command arguments and set options and source files
-        for (int i = 1; i < argc; ++i) {
+        for (auto i = 1; i < argc; ++i) {
             if (std::strcmp("--help", argv[i]) == 0) {
                 options_.set(options::kind::help);
             }
@@ -136,7 +136,7 @@ namespace nemesis {
                 options_.set(options::kind::compile);
             }
             else if (std::strcmp("--args", argv[i]) == 0) {
-                for (int j = i + 1; j < argc; ++j) runtime_args_.push_back(argv[j]);
+                for (auto j = i + 1; j < argc; ++j) runtime_args_.push_back(argv[j]);
                 break;
             }
             else if (argv[i][0] == '-') {

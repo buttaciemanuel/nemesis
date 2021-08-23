@@ -535,7 +535,7 @@ namespace nemesis {
                     result.u.value(impl::stoui(value.substr(0, suffix)));
                 } 
                 catch (...) 
-                { 
+                {
                     result.u.overflow(true); 
                     return result;
                 }
@@ -831,7 +831,7 @@ namespace nemesis {
                 break;
             case token::kind::integer_literal:
                 result = integer_parse(value);
-                if (result.i.overflow() || result.u.overflow()) {
+                if ((std::static_pointer_cast<ast::integer_type>(result.type)->is_signed() && result.i.overflow()) || (!std::static_pointer_cast<ast::integer_type>(result.type)->is_signed() && result.u.overflow())) {
                     checker_.error(expr.range(), "This integer number will provoke a damn overflow, idiot!", "", diagnostic::format("too large for type $", result.type->string()));
                     throw evaluator::error();
                 }

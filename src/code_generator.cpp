@@ -36,15 +36,19 @@ namespace nemesis {
             output_.stream() << "#include \"../libns/nscore/nscore.h\"\n";
             // forward type declarations
             output_.stream() << "/* Forward type declarations */\n";
-            for (auto anonymous : unit.second->anonymous_types) output_.stream() << "struct " << emit(anonymous) << ";\n";
-            for (auto typedecl : unit.second->types) if (!typedecl->generic()) output_.stream() << prototype(typedecl) << ";\n";
+            for (auto type : unit.second->types) {
+                if (auto typedecl = dynamic_cast<const ast::type_declaration*>(type->declaration())) output_.stream() << prototype(typedecl) << ";\n";
+                else output_.stream() << "struct " << emit(type) << ";\n";
+            }
             // forward function declarations
             output_.stream() << "/* Forward function declarations */\n";
             for (auto fndecl : unit.second->functions) if (!fndecl->generic()) output_.stream() << prototype(fndecl) << ";\n";
             // emits all type declarations inside each file
             output_.stream() << "/* Type definitions */\n";
-            for (auto anonymous : unit.second->anonymous_types) emit_anonymous_type(anonymous);
-            for (auto typedecl : unit.second->types) if (!typedecl->generic()) typedecl->accept(*this);
+            for (auto type : unit.second->types) {
+                if (auto typedecl = dynamic_cast<const ast::type_declaration*>(type->declaration())) typedecl->accept(*this);
+                else emit_anonymous_type(type);
+            }
             // Global variables definitions
             output_.stream() << "/* Variable and constants definitions */\n";
             for (auto valuedecl : unit.second->globals) valuedecl->accept(*this);
@@ -244,7 +248,7 @@ namespace nemesis {
             {
                 auto type = std::dynamic_pointer_cast<nemesis::ast::integer_type>(value.type);
                 if (type->is_signed()) return std::to_string(value.i.value()); 
-                else return std::to_string(value.u.value());
+                else return std::to_string(value.u.value()) + "u";
             }
             case nemesis::ast::type::category::rational_type:
             {
@@ -455,7 +459,7 @@ namespace nemesis {
 
         result << fullname(decl) << "(";
 
-        for (int i = 0; i < decl->parameters().size(); ++i) {
+        for (auto i = 0; i < decl->parameters().size(); ++i) {
             if (i > 0) result << ", ";
             result << emit(decl->parameters().at(i)->annotation().type, std::static_pointer_cast<ast::parameter_declaration>(decl->parameters().at(i))->name().lexeme().string());
         }
@@ -651,7 +655,7 @@ namespace nemesis {
                 struct guard inner(output_);
                 auto args_name = std::static_pointer_cast<ast::parameter_declaration>(decl.parameters().front())->name().lexeme();
                 output_.line() << "std::vector<__chars> __args_buffer((std::size_t) __argc);\n";
-                output_.line() << "for (int i = 0; i < __argc; ++i) __args_buffer[i] = __chars(__argv[i]);\n";
+                output_.line() << "for (auto i = 0; i < __argc; ++i) __args_buffer[i] = __chars(__argv[i]);\n";
                 output_.line();
                 decl.parameters().front()->accept(*this);
                 output_.stream() << " = __slice<__chars>(__args_buffer.data(), __argc);\n";
@@ -854,8 +858,14 @@ namespace nemesis {
             case token::kind::as_kw:
             {
                 auto original = expr.left()->annotation().type, result = expr.right()->annotation().type;
-        
-                switch (result->category()) {
+
+                // implicit unpacking of variant type
+                if (auto variant = std::dynamic_pointer_cast<ast::variant_type>(original)) {
+                    if (!variant->contains(result)) throw std::invalid_argument("code_generator::visit(const ast::implicit_conversion_expression&): invalid variant conversion");
+                    expr.left()->accept(*this);
+                    output_.stream() << "._" << std::hash<std::string>()(result->string());
+                }
+                else switch (result->category()) {
                     case ast::type::category::chars_type:
                         if (original->category() == ast::type::category::string_type) {
                             output_.stream() << emit(result) << "(";
@@ -938,8 +948,12 @@ namespace nemesis {
     void code_generator::visit(const ast::identifier_expression& expr) 
     {
         if (expr.annotation().referencing) {
+            // emit constant
+            if (expr.annotation().referencing->kind() == ast::kind::const_declaration && expr.annotation().value.type && expr.annotation().value.type->category() != ast::type::category::unknown_type) {
+                output_.stream() << emit(expr.annotation().value);
+            }
             // builtin functions
-            if (auto fn = dynamic_cast<const ast::function_declaration*>(expr.annotation().referencing)) {
+            else if (auto fn = dynamic_cast<const ast::function_declaration*>(expr.annotation().referencing)) {
                 // strips name from generic arguments
                 auto non_generic_name = fn->name().lexeme().string();
                 auto first = non_generic_name.find_first_of('(');
@@ -1326,13 +1340,36 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
-        std::cout << ast::printer().print(*std::dynamic_pointer_cast<ast::pattern_expression>(expr.pattern())->compiled()) << '\n';
-        
         output_.stream() << "if (";
-        std::dynamic_pointer_cast<ast::pattern_expression>(expr.pattern())->compiled()->accept(*this);
+        if (auto condition = std::dynamic_pointer_cast<ast::pattern_expression>(expr.pattern())->compiled()) condition->accept(*this);
+        else output_.stream() << "true";
         output_.stream() << ") {\n";
         expr.body()->accept(*this);
         output_.line() << "}\n";
+        if (expr.else_body()) {
+            output_.line() << "else {\n";
+            expr.else_body()->accept(*this);
+            output_.line() << "}\n";
+        }
+    }
+
+    void code_generator::visit(const ast::when_expression& expr)
+    {
+        if (emit_if_constant(expr)) return;
+        
+        unsigned i = 0;
+
+        for (auto branch : expr.branches()) {
+            if (i > 0) output_.line() << "else if (";
+            else output_.stream() << "if (";
+            if (auto condition = std::dynamic_pointer_cast<ast::pattern_expression>(branch.pattern())->compiled()) condition->accept(*this);
+            else output_.stream() << "true";
+            output_.stream() << ") {\n";
+            branch.body()->accept(*this);
+            output_.line() << "}\n";
+            ++i;
+        }
+        
         if (expr.else_body()) {
             output_.line() << "else {\n";
             expr.else_body()->accept(*this);

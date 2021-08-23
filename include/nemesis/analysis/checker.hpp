@@ -114,7 +114,7 @@ namespace nemesis {
         const ast::function_declaration* is_default_constructible(ast::pointer<ast::type> type) const;
         void test_immutable_assignment(const ast::var_declaration& decl, const ast::expression& value) const;
         void test_immutable_assignment(ast::pointer<ast::type> lvalue, const ast::expression& rvalue) const;
-        void add_anonymous_type(ast::pointer<ast::type> anoymous);
+        void add_type(ast::pointer<ast::type> type);
 
         void visit(const ast::bit_field_type_expression& expr);
         void visit(const ast::path_type_expression& expr);

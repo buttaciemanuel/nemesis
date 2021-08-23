@@ -876,7 +876,7 @@ namespace nemesis {
             byte units[4] = { 0x0 };
             
             int count = encode(character, units);
-            for (int i = 0; i < count; ++i) bytes_.push_back(units[i]);
+            for (auto i = 0; i < count; ++i) bytes_.push_back(units[i]);
             
             return *this;
         }
