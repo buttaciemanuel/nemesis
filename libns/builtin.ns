@@ -1,0 +1,44 @@
+nucleus nscore
+
+// prints a string on the console
+println(s: string) {}
+
+// crash and stops the process printing a message
+crash(message: string) {}
+
+// allocate a buffer of objects dynamically
+function(T) allocate(n: usize) [T] = []
+
+// deallocate a buffer of objects dynamically
+function(T) deallocate(slice: [T]) {}
+
+// dynamically allocate a single object
+function(T) free(memory: *T) {}
+
+// return size occupied by the type
+function(T) sizeof() usize = 0usize
+
+// stops the process with exit code
+exit(code: i32) {}
+
+// none type
+type none
+
+// optional type
+type(T) opt is T | none
+
+// extension of optional type
+extend(T) opt(T) {
+    or(self: opt(T), other: T) T = when self is T { self } else { other }
+    .empty(self: opt(T)) bool = when self is T { false } else { true }
+}
+
+// this is the concept for iterable object
+concept(T) iterable {
+    function(U) iter(self: T) U
+}
+
+// this is the concept for iterator object
+concept(T) iterator {
+    function(U) next(self: T) opt(U)
+}
