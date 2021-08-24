@@ -8,10 +8,10 @@ std::size_t __get_length(std::string arg) { return __chars(arg.data(), arg.size(
 
 void nscore_println(std::string s) { std::cout << s << '\n'; }
 
-void nscore_crash(std::string message, const char* file, int line) 
+void nscore_crash(std::string message, const char* file, int line, int column) 
 {
     if (!file || line <= 0) std::cerr << "• crash: " << message << '\n';
-    else std::cerr << "• crash at " << file << ":" << line << ": " << message << '\n';
+    else std::cerr << "• crash at " << file << ":" << line << ":" << column << ": " << message << '\n';
     std::abort();
 }
 

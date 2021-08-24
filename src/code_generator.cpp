@@ -351,6 +351,7 @@ namespace nemesis {
             for (auto subtype : variant_type->types()) {
                 auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
                 
+                // first emits constructors for variant using each of its types
                 output_.line() << emit(type) << " " << emit(type) << "_init_" << hash << "(" << emit(subtype, "init") << ") {\n";
                 
                 {
@@ -359,6 +360,17 @@ namespace nemesis {
                     output_.line() << "result.__tag = " << hash << "ull;\n";
                     output_.line() << "result._" << hash << " = init;\n";
                     output_.line() << "return result;\n";
+                }
+
+                output_.line() << "}\n";
+
+                // then emits explicit conversions to each of its types
+                output_.line() << emit(subtype) << " " << emit(type) << "_as_" << hash << "(" << emit(type, "self") << ", const char* file, int line, int column) {\n";
+                
+                {
+                    struct guard inner(output_);
+                    output_.line() << "if (self.__tag != " << hash << "ull) nscore_crash(\"damn, you cannot explictly convert variant since it has a different run-time type!\", file, line, column);\n";
+                    output_.line() << "return self._" << hash << "; \n";
                 }
 
                 output_.line() << "}\n";
@@ -569,6 +581,7 @@ namespace nemesis {
             struct guard inner(output_);
             auto hash = std::to_string(std::hash<std::string>()(type->string()));
             
+            // emits constructor for each of its types
             output_.line() << emit(decl.annotation().type) << " " << emit(decl.annotation().type) << "_init_" << hash << "(" << emit(type, "init") << ") {\n";
             
             {
@@ -577,6 +590,17 @@ namespace nemesis {
                 output_.line() << "result.__tag = " << hash << "ull;\n";
                 output_.line() << "result._" << hash << " = init;\n";
                 output_.line() << "return result;\n";
+            }
+
+            output_.line() << "}\n";
+
+            // then emits explicit conversions to each of its types
+            output_.line() << emit(type) << " " << emit(decl.annotation().type) << "_as_" << hash << "(" << emit(decl.annotation().type, "self") << ", const char* file, int line, int column) {\n";
+            
+            {
+                struct guard inner(output_);
+                output_.line() << "if (self.__tag != " << hash << "ull) nscore_crash(\"damn, you cannot explictly convert variant since it has a different run-time type!\", file, line, column);\n";
+                output_.line() << "return self._" << hash << "; \n";
             }
 
             output_.line() << "}\n";
@@ -859,11 +883,13 @@ namespace nemesis {
             {
                 auto original = expr.left()->annotation().type, result = expr.right()->annotation().type;
 
-                // implicit unpacking of variant type
+                // explicit unpacking of variant type
                 if (auto variant = std::dynamic_pointer_cast<ast::variant_type>(original)) {
                     if (!variant->contains(result)) throw std::invalid_argument("code_generator::visit(const ast::implicit_conversion_expression&): invalid variant conversion");
+                    // explicit conversion call
+                    output_.stream() << emit(original) << "_as_" << std::hash<std::string>()(result->string()) << "(";
                     expr.left()->accept(*this);
-                    output_.stream() << "._" << std::hash<std::string>()(result->string());
+                    output_.stream() << ", \"" << expr.binary_operator().location().filename << "\", " << expr.binary_operator().location().line << ", " << expr.binary_operator().location().column << ")";
                 }
                 else switch (result->category()) {
                     case ast::type::category::chars_type:
@@ -1112,7 +1138,7 @@ namespace nemesis {
                 }
                 
                 // with crash() call we implicitly pass file and line info to print the error
-                if (expr.callee()->annotation().referencing && fullname(expr.callee()->annotation().referencing) == "nscore_crash") output_.stream() << ", \"" << expr.range().filename.string() << "\", " << expr.range().bline;
+                if (expr.callee()->annotation().referencing && fullname(expr.callee()->annotation().referencing) == "nscore_crash") output_.stream() << ", \"" << expr.range().filename.string() << "\", " << expr.range().bline << expr.range().bcolumn;
 
                 output_.stream() << ")";
             }
@@ -1213,10 +1239,17 @@ namespace nemesis {
                 }
                 break;
             case ast::type::category::string_type:
+                // construction from raw bytes
                 if (original->category() == ast::type::category::chars_type) {
                     output_.stream() << emit(result) << "(";
                     expr.expression()->accept(*this);
                     output_.stream() << ".data())";
+                }
+                // implicit conversion through 'str' property
+                else if (original->declaration()) {
+                    output_.stream() << emit(original) << "_str(";
+                    expr.expression()->accept(*this);
+                    output_.stream() << ")";
                 }
                 break;
             case ast::type::category::variant_type:

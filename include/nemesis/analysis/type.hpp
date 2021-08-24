@@ -57,7 +57,6 @@ namespace nemesis {
                 range_type,
                 function_type,
                 structure_type,
-                constraint_type,
                 variant_type,
                 behaviour_type,
                 generic_type,

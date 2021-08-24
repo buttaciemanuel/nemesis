@@ -35,12 +35,13 @@ start(args: [chars]) {
     const CONST = 1
 
     type Yes(i32, bool)
+    extend Yes { .str(self: *Yes) string = "({(*self).0}, {(*self).1})" }
     type(U) Ty(a: [U], b: U, c: none | i32 | string | Yes)
     
-    mutable val t = Ty!(i32)(a: [1, 2], b: 3, c: 2)
+    mutable val t = Ty!(i32)(a: [1, 2], b: 3, c: Yes(1, false))
     when t {
         Ty!(i32)(_, 1..=3, vec!(i32).CC..CONST) => println("damn!")
-        Ty!(i32)(a, b, c) => println("dammit {b}, {c as string}")
+        Ty!(i32)(a, b, c) => println("dammit {b}, {c as Yes}")
         _ => println("fuck")
     }
     else { println("damn else block") }

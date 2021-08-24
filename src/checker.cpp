@@ -3877,10 +3877,30 @@ namespace nemesis {
         if (auto identifier = std::dynamic_pointer_cast<ast::identifier_expression>(expr.callee())) {
             if (!identifier->is_generic() && identifier->identifier().lexeme().string() == "__format") {
                 ast::types formals;
-                
+                unsigned i = 0;
+
                 for (auto arg : expr.arguments()) {
+                    const ast::property_declaration* conversion = nullptr;
+
                     arg->accept(*this);
                     formals.push_back(arg->annotation().type);
+
+                    // checks if it is convertible to string
+                    if (!is_string_convertible(arg->annotation().type, conversion)) {
+                        auto tname = arg->annotation().type->string();
+                        auto builder = diagnostic::builder()
+                                        .severity(diagnostic::severity::error)
+                                        .location(arg->range().begin())
+                                        .message(diagnostic::format("Type `$` cannot be formatted as a string since it's missing conversion procedure!", tname))
+                                        .highlight(arg->range(), "missing string conversion")
+                                        .explanation(diagnostic::format("I suggest providing string conversion property `str`, like this \\ \\ `extend $ { .str(self: $) string {...} }`", tname, tname));
+
+                        publisher_.publish(builder.build());
+                    }
+                    // implicit conversion to string calling 'str' property
+                    else if (conversion) expr.arguments().at(i) = implicit_forced_cast(types::string(), expr.arguments().at(i));
+
+                    ++i;
                 }
 
                 if (auto implicit = implicit_cast(types::string(), expr.arguments().front())) expr.arguments().front() = implicit;
@@ -9913,6 +9933,36 @@ namespace nemesis {
         }
 
         return nullptr;
+    }
+
+    bool checker::is_string_convertible(ast::pointer<ast::type> type, const ast::property_declaration*& procedure) const
+    {
+        if (type->declaration()) {
+            for (auto fn : scopes_.at(type->declaration())->functions()) {
+                if (fn.first != "str" || fn.second->kind() == ast::kind::function_declaration) continue;
+                auto fdecl = static_cast<const ast::property_declaration*>(fn.second);
+                if (!types::compatible(types::string(), std::static_pointer_cast<ast::function_type>(fdecl->annotation().type)->result()) || fdecl->parameters().size() != 1) continue;
+                procedure = fdecl;
+                return true;
+            }
+        }
+        else switch (type->category()) {
+            case ast::type::category::variant_type:
+            case ast::type::category::structure_type:
+            case ast::type::category::tuple_type:
+            case ast::type::category::function_type:
+            case ast::type::category::slice_type:
+            case ast::type::category::array_type:
+            case ast::type::category::behaviour_type:
+            case ast::type::category::unknown_type:
+            case ast::type::category::nucleus_type:
+            case ast::type::category::generic_type:
+                return false;
+            default:
+                return true;
+        }
+
+        return false;
     }
 
     void checker::visit(const ast::extend_declaration& decl) 
