@@ -86,6 +86,7 @@ namespace nemesis {
         void visit(const ast::expression_statement& stmt);
         void visit(const ast::assignment_statement& stmt);
         void visit(const ast::return_statement& stmt);
+        void visit(const ast::contract_statement& stmt);
 
         void visit(const ast::parameter_declaration& decl);
         void visit(const ast::field_declaration& decl);

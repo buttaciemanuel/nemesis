@@ -21,6 +21,9 @@ function(T) sizeof() usize = 0usize
 // stops the process with exit code
 exit(code: i32) {}
 
+// prints stacktrace
+stacktrace() {}
+
 // none type
 type none
 
@@ -31,6 +34,10 @@ type(T) opt is T | none
 extend(T) opt(T) {
     or(self: opt(T), other: T) T = when self is T { self } else { other }
     .empty(self: opt(T)) bool = when self is T { false } else { true }
+    .value(self: opt(T)) T {
+        when self is none { crash("you are unpacking empty optional, idiot!") }
+        self as T
+    }
 }
 
 // this is the concept for iterable object

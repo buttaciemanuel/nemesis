@@ -3563,6 +3563,10 @@ namespace nemesis {
              */
             const ast::node*& exprnode() const { return exprnode_; }
             /**
+             * @return Reference to contracts
+             */
+            ast::pointers<ast::statement>& contracts() const { return contracts_; }
+            /**
              * @return Node kind
              */
             ast::kind kind() const { return kind::block_expression; } 
@@ -3575,6 +3579,10 @@ namespace nemesis {
              * Annotation for expression node
              */
             mutable const ast::node* exprnode_ = nullptr;
+            /**
+             * Annotation for contracts
+             */
+            mutable ast::pointers<ast::statement> contracts_;
         };
         /**
          * Function expression which cannot capture local environment, for example

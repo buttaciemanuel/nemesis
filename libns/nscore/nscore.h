@@ -7,10 +7,25 @@
 #include <numeric>
 #include <string>
 #include <sstream>
+#include <stack>
 #include <vector>
 #include <tuple>
 
 struct __char { std::int32_t codepoint; };
+
+struct __stack_entry {
+    const char* file;
+    const char* function;
+    unsigned int line;
+    unsigned int column;
+    constexpr __stack_entry(const char* file, const char* function, unsigned int line, unsigned int column) : file(file), function(function), line(line), column(column) {}
+};
+
+struct __stack_activation_record {
+    __stack_activation_record(const char* file, const char* function, unsigned int line, unsigned int column);
+    ~__stack_activation_record();
+    void location(int line, int column);
+};
 
 // builtin and hidden procedures
 constexpr __char __char_decode(const char* units);
@@ -24,6 +39,7 @@ template<typename T> constexpr std::size_t nscore_sizeof() { return sizeof(T); }
 void nscore_println(std::string s);
 void nscore_crash(std::string message, const char* file = nullptr, int line = 0, int column = 0);
 void nscore_exit(std::int32_t code);
+void nscore_stacktrace();
 
 class __chars_iterator {
 public:

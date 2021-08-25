@@ -785,7 +785,7 @@ namespace nemesis {
         if (type->category() == expression->annotation().type->category() && (type->category() == ast::type::category::integer_type || type->category() == ast::type::category::rational_type || type->category() == ast::type::category::float_type || type->category() == ast::type::category::complex_type)) {
             // implicit cast between numeric types of different sizes or signedness
             if (!types::compatible(type, expression->annotation().type, true)) {
-                auto result = ast::create<ast::implicit_conversion_expression>(expression->range(), expression);
+                ast::pointer<ast::expression> result = ast::create<ast::implicit_conversion_expression>(expression->range(), expression);
                 result->annotation().type = type;
                 return result;
             }
@@ -793,19 +793,23 @@ namespace nemesis {
         }
         // implicit address of
         else if (type->category() == ast::type::category::pointer_type && types::compatible(std::static_pointer_cast<ast::pointer_type>(type)->base(), expression->annotation().type, false)) {
-            auto result = ast::create<ast::unary_expression>(expression->range(), token(token::kind::amp, utf8::span::builder().concat("&").build(), source_location()), expression);
+            ast::pointer<ast::expression> result = ast::create<ast::unary_expression>(expression->range(), token(token::kind::amp, utf8::span::builder().concat("&").build(), source_location()), expression);
+            result->annotation().type = type;
+            result = ast::create<ast::parenthesis_expression>(expression->range(), result);
             result->annotation().type = type;
             return result;
         }
         // implicit dereference
         else if (expression->annotation().type->category() == ast::type::category::pointer_type && types::compatible(type, std::static_pointer_cast<ast::pointer_type>(expression->annotation().type)->base(), false)) {
-            auto result = ast::create<ast::unary_expression>(expression->range(), token(token::kind::star, utf8::span::builder().concat("*").build(), source_location()), expression);
+            ast::pointer<ast::expression> result = ast::create<ast::unary_expression>(expression->range(), token(token::kind::star, utf8::span::builder().concat("*").build(), source_location()), expression);
+            result->annotation().type = type;
+            result = ast::create<ast::parenthesis_expression>(expression->range(), result);
             result->annotation().type = type;
             return result;
         }
         // implicit cast
         else if (!types::compatible(type, expression->annotation().type, true)) {
-            auto result = ast::create<ast::implicit_conversion_expression>(expression->range(), expression);
+            ast::pointer<ast::expression> result = ast::create<ast::implicit_conversion_expression>(expression->range(), expression);
             result->annotation().type = type;
             return result;
         }
@@ -3260,16 +3264,15 @@ namespace nemesis {
         // block scope
         auto saved = begin_scope(&expr);
         // if we are in function, property or for loop, then we must test contracts
-        ast::pointers<ast::statement> contracts;
         // loop scope
         if (auto loop = scope_->outscope(environment::kind::loop)) {
-            if (auto forloop = dynamic_cast<const ast::for_loop_expression*>(loop)) contracts = forloop->contracts();
-            else if (auto forrange = dynamic_cast<const ast::for_range_expression*>(loop)) contracts = forrange->contracts();
+            if (auto forloop = dynamic_cast<const ast::for_loop_expression*>(loop)) expr.contracts() = forloop->contracts();
+            else if (auto forrange = dynamic_cast<const ast::for_range_expression*>(loop)) expr.contracts() = forrange->contracts();
         }
         // function or property scope
         else if (auto fdecl = scope_->outscope(environment::kind::function)) {
-            if (auto function = dynamic_cast<const ast::function_declaration*>(fdecl)) contracts = function->contracts();
-            else if (auto property = dynamic_cast<const ast::property_declaration*>(fdecl)) contracts = property->contracts();
+            if (auto function = dynamic_cast<const ast::function_declaration*>(fdecl)) expr.contracts() = function->contracts();
+            else if (auto property = dynamic_cast<const ast::property_declaration*>(fdecl)) expr.contracts() = property->contracts();
         }
         // first pass, only type, constant, variable, function declarations names are registered for forward definitions
         for (ast::pointer<ast::node> stmt : expr.statements()) try {
@@ -3661,7 +3664,7 @@ namespace nemesis {
         for (auto pair : scope_->values()) if (dynamic_cast<const ast::var_declaration*>(pair.second) || dynamic_cast<const ast::var_tupled_declaration*>(pair.second)) vars_to_remove.insert(pair.first);
         for (auto var : vars_to_remove) scope_->values().erase(var);
         // contracts at the beginning
-        for (auto contract : contracts) {
+        for (auto contract : expr.contracts()) {
             if (std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
         }
         // fourth pass is used to check all others statements including
@@ -3699,7 +3702,7 @@ namespace nemesis {
             }
         }
         // contracts at exit
-        for (auto contract : contracts) {
+        for (auto contract : expr.contracts()) {
             if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
         }
 
@@ -3770,6 +3773,7 @@ namespace nemesis {
                 if (auto exprstmt = dynamic_cast<const ast::expression_statement*>(block->exprnode())) {
                     if (result_type->category() != ast::type::category::unknown_type &&
                         exprstmt->expression()->annotation().type->category() != ast::type::category::unknown_type &&
+                        !types::compatible(result_type, types::unit()) &&
                         !types::assignment_compatible(result_type, exprstmt->expression()->annotation().type)) {
                         auto builder = diagnostic::builder()
                                     .severity(diagnostic::severity::error)
@@ -3898,7 +3902,13 @@ namespace nemesis {
                         publisher_.publish(builder.build());
                     }
                     // implicit conversion to string calling 'str' property
-                    else if (conversion) expr.arguments().at(i) = implicit_forced_cast(types::string(), expr.arguments().at(i));
+                    else if (conversion) {
+                        auto property = ast::create<ast::identifier_expression>(source_range(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat("str").build()).build(), ast::pointers<ast::expression>());
+                        property->annotation().type = conversion->annotation().type;
+                        property->annotation().referencing = conversion;
+                        expr.arguments().at(i) = ast::create<ast::member_expression>(expr.arguments().at(i)->range(), expr.arguments().at(i), property);
+                        expr.arguments().at(i)->annotation().type = types::string();
+                    }
 
                     ++i;
                 }
@@ -5625,8 +5635,13 @@ namespace nemesis {
             throw semantic_error();
         }
 
-        auto tuple_type = std::dynamic_pointer_cast<ast::tuple_type>(expr.expression()->annotation().type);
+        ast::pointer<ast::tuple_type> tuple_type = nullptr;
 
+        if (auto tuple = std::dynamic_pointer_cast<ast::tuple_type>(expr.expression()->annotation().type)) tuple_type = tuple;
+        else if (auto pointer = std::dynamic_pointer_cast<ast::pointer_type>(expr.expression()->annotation().type)) {
+            if (auto tuple = std::dynamic_pointer_cast<ast::tuple_type>(pointer->base())) tuple_type = tuple;
+        }
+        
         if (!tuple_type) error(expr.expression()->range(), diagnostic::format("I was expecting a tuple for indexing, I found `$`, f*cker!", expr.expression()->annotation().type->string()), "", "expected tuple");
 
         auto index = evaluator::integer_parse(expr.index().lexeme().string()).i.value();
@@ -9539,6 +9554,7 @@ namespace nemesis {
                 if (auto exprstmt = dynamic_cast<const ast::expression_statement*>(block->exprnode())) {
                     if (result_type && result_type->category() != ast::type::category::unknown_type &&
                         exprstmt->expression()->annotation().type && exprstmt->expression()->annotation().type->category() != ast::type::category::unknown_type &&
+                        !types::compatible(result_type, types::unit()) &&
                         !types::assignment_compatible(result_type, exprstmt->expression()->annotation().type)) {
                         auto builder = diagnostic::builder()
                                     .severity(diagnostic::severity::error)
@@ -9664,6 +9680,7 @@ namespace nemesis {
                 if (auto exprstmt = dynamic_cast<const ast::expression_statement*>(block->exprnode())) {
                     if (result_type->category() != ast::type::category::unknown_type &&
                         exprstmt->expression()->annotation().type && exprstmt->expression()->annotation().type->category() != ast::type::category::unknown_type &&
+                        !types::compatible(result_type, types::unit()) &&
                         !types::assignment_compatible(result_type, exprstmt->expression()->annotation().type)) {
                         auto builder = diagnostic::builder()
                                     .severity(diagnostic::severity::error)
@@ -9712,8 +9729,18 @@ namespace nemesis {
         // end function scope
         end_scope();
 
+        auto fntype = types::function(formals, result_type);
+
         decl.annotation().resolved = true;
-        decl.annotation().type = types::function(formals, result_type);
+        decl.annotation().type = fntype;
+
+        // checks for implicit conversion or operator functions or properties
+        if (!decl.invalid() && decl.name().lexeme().string() == "str") {
+            if (!types::compatible(typescope->annotation().type, fntype->formals().front()) || fntype->result()->category() != ast::type::category::string_type) {
+                auto tname = typescope->annotation().type->string();
+                warning(decl.name().range(), diagnostic::format("Property `str` won't be considered for conversion of type `$` to `string` as it doesn't respect its prototype!", tname), diagnostic::format("I suggest providing string conversion property `str`, like this \\ \\ `extend $ { .str(self: $) string {...} }`", tname, tname), "wrong prototype");
+            }
+        }
     }
 
     void checker::visit(const ast::concept_declaration& decl)
@@ -9941,7 +9968,7 @@ namespace nemesis {
             for (auto fn : scopes_.at(type->declaration())->functions()) {
                 if (fn.first != "str" || fn.second->kind() == ast::kind::function_declaration) continue;
                 auto fdecl = static_cast<const ast::property_declaration*>(fn.second);
-                if (!types::compatible(types::string(), std::static_pointer_cast<ast::function_type>(fdecl->annotation().type)->result()) || fdecl->parameters().size() != 1) continue;
+                if (!types::compatible(types::string(), std::static_pointer_cast<ast::function_type>(fdecl->annotation().type)->result()) || fdecl->parameters().size() != 1 || !types::compatible(type, fdecl->parameters().front()->annotation().type)) continue;
                 procedure = fdecl;
                 return true;
             }

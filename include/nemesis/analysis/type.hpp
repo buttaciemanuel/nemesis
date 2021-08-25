@@ -339,7 +339,7 @@ namespace nemesis {
             std::string string(bool absolute = true) const 
             {
                 if (base_->category() == ast::type::category::variant_type) {
-                    return "*{" + base_->string() + "}";
+                    return "*{ " + base_->string() + " }";
                 }
                 return "*" + base_->string(); 
             }

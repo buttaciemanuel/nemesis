@@ -550,30 +550,25 @@ namespace nemesis {
                 }
                 
                 output_.line() << "};\n";
-            }
 
-            // constructor, copy-constructor and destructor are defined for non-trivial members of the union
-            output_.line() << emit(decl.annotation().type) << "() {}\n";
-            output_.line() << emit(decl.annotation().type) << "(const " << emit(decl.annotation().type) << "& other) : __tag(other.__tag) {\n";
-            {
-                struct guard inner(output_);
-                output_.line() << "switch (other.__tag) {\n";
-                for (auto subtype : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
-                    auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
-                    output_.line() << "case " << hash << "ull: _" << hash << " = other._" << hash << "; break;\n";
+                // constructor, copy-constructor and destructor are defined for non-trivial members of the union
+                output_.line() << emit(decl.annotation().type) << "() {}\n";
+                output_.line() << emit(decl.annotation().type) << "(const " << emit(decl.annotation().type) << "& other) : __tag(other.__tag) {\n";
+                {
+                    struct guard inner(output_);
+                    output_.line() << "switch (other.__tag) {\n";
+                    for (auto subtype : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
+                        auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
+                        output_.line() << "case " << hash << "ull: _" << hash << " = other._" << hash << "; break;\n";
+                    }
+                    output_.line() << "default: break;\n";
+                    output_.line() << "}\n";
                 }
-                output_.line() << "default: break;\n";
                 output_.line() << "}\n";
+                output_.line() << "~" << emit(decl.annotation().type) << "() {}\n";
             }
-            output_.line() << "}\n";
-            output_.line() << "~" << emit(decl.annotation().type) << "() {}\n";
 
             output_.line() << "};\n";
-        }
-
-        if (scopes_.count(&decl)) {
-            for (auto constant : scopes_.at(&decl)->values()) constant.second->accept(*this);
-            for (auto function : scopes_.at(&decl)->functions()) function.second->accept(*this);
         }
 
         // create designated initializers for each variant type
@@ -605,6 +600,11 @@ namespace nemesis {
 
             output_.line() << "}\n";
         }
+
+        if (scopes_.count(&decl)) {
+            for (auto constant : scopes_.at(&decl)->values()) constant.second->accept(*this);
+            for (auto function : scopes_.at(&decl)->functions()) function.second->accept(*this);
+        }
     }
 
     void code_generator::visit(const ast::const_declaration& decl)
@@ -620,6 +620,8 @@ namespace nemesis {
 
     void code_generator::visit(const ast::var_declaration& decl)
     {
+        output_.line() << "__record.location(" << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
+
         output_.line() << emit(decl.annotation().type, fullname(&decl));
 
         if (decl.value()) {
@@ -674,6 +676,11 @@ namespace nemesis {
 
         if (decl.body()) {
             output_.stream() << " {\n";
+            // stack activation record for stacktrace
+            {
+                struct guard inner(output_);
+                output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+            }
             // if entry point it initializes arguments properly from __argc, __argv
             if (&decl == entry_point_ && !decl.parameters().empty()) {
                 struct guard inner(output_);
@@ -731,6 +738,11 @@ namespace nemesis {
 
         if (decl.body()) {
             output_.stream() << " {\n";
+            // stack activation record for stacktrace
+            {
+                struct guard inner(output_);
+                output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+            }
             // body traversal
             switch (decl.body()->kind()) {
                 case ast::kind::if_expression:
@@ -1138,7 +1150,7 @@ namespace nemesis {
                 }
                 
                 // with crash() call we implicitly pass file and line info to print the error
-                if (expr.callee()->annotation().referencing && fullname(expr.callee()->annotation().referencing) == "nscore_crash") output_.stream() << ", \"" << expr.range().filename.string() << "\", " << expr.range().bline << expr.range().bcolumn;
+                if (expr.callee()->annotation().referencing && fullname(expr.callee()->annotation().referencing) == "nscore_crash") output_.stream() << ", \"" << expr.range().filename.string() << "\", " << expr.range().bline << ", " << expr.range().bcolumn;
 
                 output_.stream() << ")";
             }
@@ -1174,8 +1186,13 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
+        // if left expression is a pointer to a tuple
+        if (expr.expression()->annotation().type->category() == ast::type::category::pointer_type) {
+            expr.expression()->accept(*this);
+            output_.stream() << "->_" << emit(evaluator::integer_parse(expr.index().lexeme().string()));
+        }
         // if type is declared as a tuple, then we have field access
-        if (expr.expression()->annotation().type->declaration()) {
+        else if (expr.expression()->annotation().type->declaration()) {
             expr.expression()->accept(*this);
             output_.stream() << "._" << emit(evaluator::integer_parse(expr.index().lexeme().string()));
         }
@@ -1286,6 +1303,8 @@ namespace nemesis {
         guard guard(output_);
         bool is_function_body = false;
 
+        for (auto contract : expr.contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_ensure()) contract->accept(*this);
+
         if (auto fn = scopes_.at(&expr)->outscope(environment::kind::function)) {
             auto body = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->body().get() : static_cast<const ast::property_declaration*>(fn)->body().get();
             is_function_body = &expr == body;
@@ -1315,6 +1334,7 @@ namespace nemesis {
                         if (types::compatible(types::unit(), value->annotation().type)) stmt->accept(*this);
                         // save results only if its type is not (), which is 'void' in C/C++
                         else if (!result_vars.empty()) {
+                            output_.line() << "__record.location(" << stmt->range().bline << ", " << stmt->range().bcolumn << ");\n";
                             output_.line() << result_vars.top() << " = ";
                             value->accept(*this);
                             output_.stream() << ";\n";
@@ -1412,6 +1432,9 @@ namespace nemesis {
 
     void code_generator::visit(const ast::expression_statement& stmt)
     {
+        // stack trace update of location
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+
         output_.line();
 
         stmt.expression()->accept(*this);
@@ -1431,6 +1454,9 @@ namespace nemesis {
 
     void code_generator::visit(const ast::assignment_statement& stmt)
     {
+        // stack trace update of location
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+
         output_.line();
         // 1) first of all save assigned value inside temporary variable '__temp...', like 'val __temp... = rhs'
         // this is done in order to compute complex values returned from control structures like if/for/when
@@ -1510,6 +1536,9 @@ namespace nemesis {
 
     void code_generator::visit(const ast::return_statement& stmt)
     {
+        // stack trace update of location
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+
         if (stmt.expression()) {
             switch (stmt.expression()->kind()) {
                 case ast::kind::if_expression:
@@ -1536,5 +1565,15 @@ namespace nemesis {
         else output_.line() << "return";
 
         output_.stream() << ";\n";
+    }
+
+    void code_generator::visit(const ast::contract_statement& stmt)
+    {
+        // stack trace update of location
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+
+        output_.line() << "if (!(";
+        stmt.condition()->accept(*this);
+        output_.stream() << ")) nscore_crash(\"contract failure, be more careful next time, dammit!\", \"" << stmt.condition()->range().filename << "\", " << stmt.condition()->range().bline << ", " << stmt.condition()->range().bcolumn << ");\n";
     }
 }
