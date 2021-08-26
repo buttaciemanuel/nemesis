@@ -166,7 +166,7 @@ namespace nemesis {
                     }
 
                     if (auto structure = std::dynamic_pointer_cast<ast::structure_type>(pattern->annotation().type)) {
-                        for (auto i = 0; i < record_pattern->fields().size() && record_pattern->fields().at(i)->kind() != ast::kind::ignore_pattern_expression; ++i) {
+                        for (std::size_t i = 0; i < record_pattern->fields().size() && record_pattern->fields().at(i)->kind() != ast::kind::ignore_pattern_expression; ++i) {
                             auto name = token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(structure->fields().at(i).name.data(), structure->fields().at(i).name.size()).build()).build();
                             auto field = ast::create<ast::identifier_expression>(source_range(), name, ast::pointers<ast::expression>());
                             auto member = ast::create<ast::member_expression>(source_range(), newtree, field);
@@ -179,7 +179,7 @@ namespace nemesis {
                         }
                     }
                     else if (auto tuple = std::dynamic_pointer_cast<ast::tuple_type>(pattern->annotation().type)) {
-                        for (auto i = 0; i < record_pattern->fields().size() && record_pattern->fields().at(i)->kind() != ast::kind::ignore_pattern_expression; ++i) {
+                        for (std::size_t i = 0; i < record_pattern->fields().size() && record_pattern->fields().at(i)->kind() != ast::kind::ignore_pattern_expression; ++i) {
                             auto component = token::builder().artificial(true).kind(token::kind::integer_literal).lexeme(utf8::span::builder().concat(std::to_string(i).data()).build()).build();
                             auto member = ast::create<ast::tuple_index_expression>(source_range(), newtree, component);
                             member->annotation().type = tuple->components().at(i);
@@ -224,7 +224,7 @@ namespace nemesis {
                     }
 
                     if (auto structure = std::dynamic_pointer_cast<ast::structure_type>(pattern->annotation().type)) {
-                        for (auto i = 0; i < record_pattern->fields().size(); ++i) {
+                        for (std::size_t i = 0; i < record_pattern->fields().size(); ++i) {
                             auto field = ast::create<ast::identifier_expression>(source_range(), record_pattern->fields().at(i).field, ast::pointers<ast::expression>());
                             auto member = ast::create<ast::member_expression>(source_range(), newtree, field);
                             auto type = std::find_if(structure->fields().begin(), structure->fields().end(), [&] (ast::structure_type::component field) { return field.name == record_pattern->fields().at(i).field.lexeme().string(); })->type;

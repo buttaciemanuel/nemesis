@@ -3,15 +3,18 @@ type(U) vec(hide _data: [U], hide _size: usize)
 extend(U) vec(U) {
     of(n: usize) vec(U) = vec!(U)(_data: allocate!(U)(n), _size: 0usize)
     clear(mutable self: *vec(U)) = deallocate(self._data)
-    at(self: vec(U), index: usize) U = self._data[index]
-    set(mutable self: *vec(U), index: usize, value: U) { self._data[index] = value }
+    at(self: vec(U), index: usize) U 
+        require index < self._size
+    { self._data[index] }
+    set(mutable self: *vec(U), index: usize, value: U) require index < self._size { self._data[index] = value }
     .size(self: vec(U)) usize = self._size
     const CC = 100
 }
 
 see(n: i32) i32 
     require n >= 0
-    ensure (a as i32) < i32.MAX
+    ensure (a as i32) < 0
+    invariant n >= 0 && n <= 3
 {
     mutable val a = 3.2
     a **= if n % 2 == 0 { 1 }
@@ -23,10 +26,10 @@ see(n: i32) i32
 }
 
 start(args: [chars]) {
-    /*mutable val v = vec!(i32).of(3)
+    mutable val v = vec!(i32).of(3)
     v.set(0, -10)
     v.set(1, 20)
-    println("Hey, my name is {args[1]}, goddamn \u1f603!! {v.at(0)}, {v.at(1)}, {see(9)}")
+    println("Hey, my name is {args[1]}, goddamn \u1f603!! {v.at(0)}, {v.at(11)}, {see(9)}")/*
     mutable val a: opt(i32) = none()
     when a is i32 {
         println("a's value is {a}")
@@ -48,5 +51,5 @@ start(args: [chars]) {
         _ => println("fuck")
     }
     else { println("damn else block") }
-    see(-1)
+    see(10)
 }

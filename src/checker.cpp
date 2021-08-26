@@ -294,7 +294,7 @@ namespace nemesis {
             }
             case ast::kind::block_expression:
             {
-                auto block = static_cast<const ast::block_expression*>(scope_->enclosing());
+                auto block = static_cast<const ast::block_expression*>(scope->enclosing());
                 auto pos = std::find_if(block->statements().begin(), block->statements().end(), [&] (ast::pointer<ast::statement> stmt) { return stmt.get() == after; });
                 block->statements().insert(++pos, decl);
                 break;
@@ -1201,7 +1201,7 @@ namespace nemesis {
             for (auto imported : nucleus->imports) {
                 // if imported nucleus is a subpath of path, then the name is used from imported nucleus
                 // it looks for the longest match of subpath (nucleus) inside path
-                int positions = path_contains_subpath(name, imported.first);
+                size_t positions = path_contains_subpath(name, imported.first);
                 if (positions > pos) {
                     scope = scopes_.at(imported.second);
                     pos = positions;
@@ -1261,7 +1261,7 @@ namespace nemesis {
             for (auto imported : nucleus->imports) {
                 // if imported nucleus is a subpath of path, then the name is used from imported nucleus
                 // it looks for the longest match of subpath (nucleus) inside path
-                int positions = path_contains_subpath(name, imported.first);
+                size_t positions = path_contains_subpath(name, imported.first);
                 if (positions > pos) {
                     scope = scopes_.at(imported.second);
                     pos = positions;
@@ -1320,7 +1320,7 @@ namespace nemesis {
             for (auto imported : nucleus->imports) {
                 // if imported nucleus is a subpath of path, then the name is used from imported nucleus
                 // it looks for the longest match of subpath (nucleus) inside path
-                int positions = path_contains_subpath(name, imported.first);
+                size_t positions = path_contains_subpath(name, imported.first);
                 if (positions > pos) {
                     scope = scopes_.at(imported.second);
                     pos = positions;
@@ -1795,7 +1795,7 @@ namespace nemesis {
                 else if (auto constant = dynamic_cast<const ast::const_declaration*>(vardecl)) {
                     expr.annotation().value = constant->value()->annotation().value;
                 }
-                else if (auto constparam = dynamic_cast<const ast::generic_const_parameter_declaration*>(vardecl)) {
+                else if (dynamic_cast<const ast::generic_const_parameter_declaration*>(vardecl)) {
                     expr.annotation().isparametric = true;
                 }
             }
@@ -2069,7 +2069,7 @@ namespace nemesis {
                 }
 
                 auto name = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->name() : static_cast<const ast::property_declaration*>(fn)->name();
-                bool mistake = false, concrete = true;
+                bool mistake = false;
                 substitutions sub(*this, scope_, nullptr);
 
                 // we try generic instantiation of function if requested from annotation
@@ -2135,7 +2135,7 @@ namespace nemesis {
                                         mistake = true;
                                     }
                                     else {
-                                        try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false; newexpr->annotation().isparametric = true; }
+                                        try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { newexpr->annotation().isparametric = true; }
                                         sub.put(constant.get(), newexpr->annotation().value);
                                     }
                                 }
@@ -2170,7 +2170,7 @@ namespace nemesis {
                                     mistake = true;
                                 }
                                 else {
-                                    try { expr.generics().at(i)->annotation().value = evaluate(expr.generics().at(i)); } catch (evaluator::generic_evaluation&) { concrete = false; expr.generics().at(i)->annotation().isparametric = true; }
+                                    try { expr.generics().at(i)->annotation().value = evaluate(expr.generics().at(i)); } catch (evaluator::generic_evaluation&) { expr.generics().at(i)->annotation().isparametric = true; }
                                     sub.put(constant.get(), expr.generics().at(i)->annotation().value);
                                 }
                             }
@@ -2192,10 +2192,6 @@ namespace nemesis {
                                 mistake = true;
                             }
                             else {
-                                if (auto typeexpr = std::dynamic_pointer_cast<ast::type_expression>(expr.generics().at(i))) {
-                                    if (typeexpr->is_parametric()) concrete = false;
-                                }
-                                
                                 sub.put(type.get(), expr.generics().at(i)->annotation().type);
                             }
                         }
@@ -2490,7 +2486,7 @@ namespace nemesis {
                 else if (auto constant = dynamic_cast<const ast::const_declaration*>(vardecl)) {
                     expr.annotation().value = constant->value()->annotation().value;
                 }
-                else if (auto constparam = dynamic_cast<const ast::generic_const_parameter_declaration*>(vardecl)) {
+                else if (dynamic_cast<const ast::generic_const_parameter_declaration*>(vardecl)) {
                     expr.annotation().isparametric = true;
                 }
             }
@@ -3264,15 +3260,16 @@ namespace nemesis {
         // block scope
         auto saved = begin_scope(&expr);
         // if we are in function, property or for loop, then we must test contracts
+        ast::pointers<ast::statement> contracts;
         // loop scope
         if (auto loop = scope_->outscope(environment::kind::loop)) {
-            if (auto forloop = dynamic_cast<const ast::for_loop_expression*>(loop)) expr.contracts() = forloop->contracts();
-            else if (auto forrange = dynamic_cast<const ast::for_range_expression*>(loop)) expr.contracts() = forrange->contracts();
+            if (auto forloop = dynamic_cast<const ast::for_loop_expression*>(loop)) contracts = forloop->contracts();
+            else if (auto forrange = dynamic_cast<const ast::for_range_expression*>(loop)) contracts = forrange->contracts();
         }
         // function or property scope
         else if (auto fdecl = scope_->outscope(environment::kind::function)) {
-            if (auto function = dynamic_cast<const ast::function_declaration*>(fdecl)) expr.contracts() = function->contracts();
-            else if (auto property = dynamic_cast<const ast::property_declaration*>(fdecl)) expr.contracts() = property->contracts();
+            if (auto function = dynamic_cast<const ast::function_declaration*>(fdecl)) contracts = function->contracts();
+            else if (auto property = dynamic_cast<const ast::property_declaration*>(fdecl)) contracts = property->contracts();
         }
         // first pass, only type, constant, variable, function declarations names are registered for forward definitions
         for (ast::pointer<ast::node> stmt : expr.statements()) try {
@@ -3664,7 +3661,7 @@ namespace nemesis {
         for (auto pair : scope_->values()) if (dynamic_cast<const ast::var_declaration*>(pair.second) || dynamic_cast<const ast::var_tupled_declaration*>(pair.second)) vars_to_remove.insert(pair.first);
         for (auto var : vars_to_remove) scope_->values().erase(var);
         // contracts at the beginning
-        for (auto contract : expr.contracts()) {
+        for (auto contract : contracts) {
             if (std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
         }
         // fourth pass is used to check all others statements including
@@ -3702,7 +3699,7 @@ namespace nemesis {
             }
         }
         // contracts at exit
-        for (auto contract : expr.contracts()) {
+        for (auto contract : contracts) {
             if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
         }
 
@@ -3943,7 +3940,7 @@ namespace nemesis {
                         error(member->range(), diagnostic::format("Tuple type `$` expects `$` components but you gave it `$`, pr*ck!", member->annotation().type->string(), tuple_type->components().size(), expr.arguments().size()));
                     }
                     
-                    for (auto i = 0; i < tuple_type->components().size(); ++i) {
+                    for (std::size_t i = 0; i < tuple_type->components().size(); ++i) {
                         expr.arguments().at(i)->accept(*this);
                         if (tuple_type->components().at(i)->category() == ast::type::category::unknown_type || expr.arguments().at(i)->annotation().type->category() == ast::type::category::unknown_type) continue;
                         else if (types::assignment_compatible(tuple_type->components().at(i), expr.arguments().at(i)->annotation().type)) {
@@ -3979,7 +3976,7 @@ namespace nemesis {
                         error(member->range(), diagnostic::format("Structure type `$` expects `$` fields but you gave it `$`, pr*ck!", member->annotation().type->string(), structure_type->fields().size(), expr.arguments().size()));
                     }
                     
-                    for (auto i = 0; i < structure_type->fields().size(); ++i) {
+                    for (std::size_t i = 0; i < structure_type->fields().size(); ++i) {
                         expr.arguments().at(i)->accept(*this);
 
                         if (structure_type->declaration()) {
@@ -4204,7 +4201,7 @@ namespace nemesis {
                             sub.context(scopes_.at(generic.get()));
 
                             // first explicit generic arguments are added to match list
-                            for (auto i = 0; i < identifier->generics().size(); ++i) {
+                            for (std::size_t i = 0; i < identifier->generics().size(); ++i) {
                                 if (auto constparam = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(generic->parameters().at(i))) {
                                     match.value(constparam->name().lexeme().string(), identifier->generics().at(i)->annotation().value);
                                 }
@@ -4214,7 +4211,7 @@ namespace nemesis {
                             }
 
                             // then we try to deduce generic arguments from function arguments
-                            for (auto i = 0; i < fdecl->parameters().size(); ++i) {
+                            for (std::size_t i = 0; i < fdecl->parameters().size(); ++i) {
                                 expr.arguments().at(i)->accept(*this);
 
                                 ast::type_matcher matcher(expr.arguments().at(i), fdecl->parameters().at(i)->annotation().type, publisher_);
@@ -4330,13 +4327,13 @@ namespace nemesis {
                     if (fn->kind() == ast::kind::function_declaration) params = static_cast<const ast::function_declaration*>(fn)->parameters();
                     else if (fn->kind() == ast::kind::property_declaration) params = static_cast<const ast::property_declaration*>(fn)->parameters();
 
-                    for (auto i = 0; i < fntype->formals().size(); ++i) {
+                    for (std::size_t i = 0; i < fntype->formals().size(); ++i) {
                         // variadic case
                         if (variadic && variadic->category() != ast::type::category::unknown_type && i == fntype->formals().size() - 1) {
                             variadic = std::static_pointer_cast<ast::slice_type>(fntype->formals().back())->base();
                             ast::pointers<ast::expression> elements;
                             
-                            for (auto j = i; j < expr.arguments().size(); ++j) {
+                            for (std::size_t j = i; j < expr.arguments().size(); ++j) {
                                 expr.arguments().at(j)->accept(*this);
                                 if (expr.arguments().at(j)->annotation().type->category() == ast::type::category::unknown_type) continue;
                                 else if (types::assignment_compatible(variadic, expr.arguments().at(j)->annotation().type)) {
@@ -4364,7 +4361,7 @@ namespace nemesis {
                             auto array = ast::create<ast::array_expression>(source_range(expr.arguments().at(i)->range().begin(), expr.arguments().back()->range().end()), elements);
                             array->annotation().type = types::slice(variadic);
                             
-                            for (auto j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
+                            for (std::size_t j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
 
                             expr.arguments().back() = array;
                         }
@@ -4558,7 +4555,7 @@ namespace nemesis {
                             sub.context(scopes_.at(generic.get()));
 
                             // first explicit generic arguments are added to match list
-                            for (auto i = 0; i < identifier->generics().size(); ++i) {
+                            for (std::size_t i = 0; i < identifier->generics().size(); ++i) {
                                 if (auto constparam = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(generic->parameters().at(i))) {
                                     match.value(constparam->name().lexeme().string(), identifier->generics().at(i)->annotation().value);
                                 }
@@ -4573,7 +4570,7 @@ namespace nemesis {
                             }
 
                             // then we try to deduce generic arguments from function arguments
-                            for (auto i = 1; i < fdecl->parameters().size(); ++i) {
+                            for (std::size_t i = 1; i < fdecl->parameters().size(); ++i) {
                                 expr.arguments().at(i - 1)->accept(*this);
 
                                 ast::type_matcher matcher(expr.arguments().at(i - 1), fdecl->parameters().at(i)->annotation().type, publisher_);
@@ -4695,13 +4692,13 @@ namespace nemesis {
                     if (auto implicit = implicit_cast(fntype->formals().front(), member->expression())) member->expression() = implicit;
                     
                     // first parameter is implicit
-                    for (auto i = 0; i < fntype->formals().size() - 1; ++i) {
+                    for (std::size_t i = 0; i < fntype->formals().size() - 1; ++i) {
                         // variadic case
                         if (variadic && variadic->category() != ast::type::category::unknown_type && i == fntype->formals().size() - 2) {
                             variadic = std::static_pointer_cast<ast::slice_type>(fntype->formals().back())->base();
                             ast::pointers<ast::expression> elements;
                             
-                            for (auto j = i; j < expr.arguments().size(); ++j) {
+                            for (std::size_t j = i; j < expr.arguments().size(); ++j) {
                                 expr.arguments().at(j)->accept(*this);
                                 if (expr.arguments().at(j)->annotation().type->category() == ast::type::category::unknown_type) continue;
                                 else if (types::assignment_compatible(variadic, expr.arguments().at(j)->annotation().type)) {
@@ -4727,7 +4724,7 @@ namespace nemesis {
                             auto array = ast::create<ast::array_expression>(source_range(expr.arguments().at(i)->range().begin(), expr.arguments().back()->range().end()), elements);
                             array->annotation().type = types::slice(variadic);
                             
-                            for (auto j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
+                            for (std::size_t j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
 
                             expr.arguments().back() = array;
                         }
@@ -4765,7 +4762,7 @@ namespace nemesis {
                         error(expr.callee()->range(), diagnostic::format("This function expects `$` arguments but you gave it `$`, pr*ck!", fntype->formals().size(), expr.arguments().size()));
                     }
                     
-                    for (auto i = 0; i < fntype->formals().size(); ++i) {
+                    for (std::size_t i = 0; i < fntype->formals().size(); ++i) {
                         expr.arguments().at(i)->accept(*this);
                         if (fntype->formals().at(i)->category() == ast::type::category::unknown_type || expr.arguments().at(i)->annotation().type->category() == ast::type::category::unknown_type) continue;
                         else if (types::assignment_compatible(fntype->formals().at(i), expr.arguments().at(i)->annotation().type)) {
@@ -4812,7 +4809,7 @@ namespace nemesis {
                         error(expr.callee()->range(), diagnostic::format("Tuple type `$` expects `$` components but you gave it `$`, pr*ck!", expr.callee()->annotation().type->string(), tuple_type->components().size(), expr.arguments().size()));
                     }
                     
-                    for (auto i = 0; i < tuple_type->components().size(); ++i) {
+                    for (std::size_t i = 0; i < tuple_type->components().size(); ++i) {
                         expr.arguments().at(i)->accept(*this);
                         if (tuple_type->components().at(i)->category() == ast::type::category::unknown_type || expr.arguments().at(i)->annotation().type->category() == ast::type::category::unknown_type) continue;
                         else if (types::assignment_compatible(tuple_type->components().at(i), expr.arguments().at(i)->annotation().type)) {
@@ -4847,7 +4844,7 @@ namespace nemesis {
                         error(expr.callee()->range(), diagnostic::format("Structure type `$` expects `$` fields but you gave it `$`, pr*ck!", expr.callee()->annotation().type->string(), structure_type->fields().size(), expr.arguments().size()));
                     }
                     
-                    for (auto i = 0; i < structure_type->fields().size(); ++i) {
+                    for (std::size_t i = 0; i < structure_type->fields().size(); ++i) {
                         expr.arguments().at(i)->accept(*this);
 
                         if (structure_type->declaration()) {
@@ -5070,7 +5067,7 @@ namespace nemesis {
                         sub.context(scopes_.at(generic.get()));
 
                         // first explicit generic arguments are added to match list
-                        for (auto i = 0; i < identifier->generics().size(); ++i) {
+                        for (std::size_t i = 0; i < identifier->generics().size(); ++i) {
                             if (auto constparam = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(generic->parameters().at(i))) {
                                 match.value(constparam->name().lexeme().string(), identifier->generics().at(i)->annotation().value);
                             }
@@ -5080,7 +5077,7 @@ namespace nemesis {
                         }
 
                         // then we try to deduce generic arguments from function arguments
-                        for (auto i = 0; i < fdecl->parameters().size(); ++i) {
+                        for (std::size_t i = 0; i < fdecl->parameters().size(); ++i) {
                             expr.arguments().at(i)->accept(*this);
 
                             ast::type_matcher matcher(expr.arguments().at(i), fdecl->parameters().at(i)->annotation().type, publisher_);
@@ -5226,13 +5223,13 @@ namespace nemesis {
                 else if (identifier->annotation().referencing->kind() == ast::kind::property_declaration) params = static_cast<const ast::property_declaration*>(identifier->annotation().referencing)->parameters();
 
                 // analysis of arguments
-                for (auto i = 0; i < fntype->formals().size(); ++i) {
+                for (std::size_t i = 0; i < fntype->formals().size(); ++i) {
                     // variadic case
                     if (variadic && variadic->category() != ast::type::category::unknown_type && i == fntype->formals().size() - 1) {
                         variadic = std::static_pointer_cast<ast::slice_type>(fntype->formals().back())->base();
                         ast::pointers<ast::expression> elements;
                         
-                        for (auto j = i; j < expr.arguments().size(); ++j) {
+                        for (std::size_t j = i; j < expr.arguments().size(); ++j) {
                             expr.arguments().at(j)->accept(*this);
                             if (expr.arguments().at(j)->annotation().type->category() == ast::type::category::unknown_type) continue;
                             else if (types::assignment_compatible(variadic, expr.arguments().at(j)->annotation().type)) {
@@ -5260,7 +5257,7 @@ namespace nemesis {
                         auto array = ast::create<ast::array_expression>(source_range(expr.arguments().at(i)->range().begin(), expr.arguments().back()->range().end()), elements);
                         array->annotation().type = types::slice(variadic);
                         
-                        for (auto j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
+                        for (std::size_t j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
 
                         expr.arguments().back() = array;
                     }
@@ -5297,7 +5294,7 @@ namespace nemesis {
         std::string to_identifier_type_name(const std::string& type_name) 
         {
             std::ostringstream oss;
-            for (auto i = 0; i < type_name.size() - 1; ++i) {
+            for (std::size_t i = 0; i < type_name.size() - 1; ++i) {
                 if (std::isalnum(type_name.at(i)) && type_name.at(i + 1) == '(') {
                     oss << type_name.at(i) << "!(";
                     ++i;
@@ -5644,7 +5641,7 @@ namespace nemesis {
         
         if (!tuple_type) error(expr.expression()->range(), diagnostic::format("I was expecting a tuple for indexing, I found `$`, f*cker!", expr.expression()->annotation().type->string()), "", "expected tuple");
 
-        auto index = evaluator::integer_parse(expr.index().lexeme().string()).i.value();
+        std::size_t index = evaluator::integer_parse(expr.index().lexeme().string()).i.value();
 
         if (index < 0 || index >= tuple_type->components().size()) {
             auto diag = diagnostic::builder()
@@ -7609,7 +7606,7 @@ namespace nemesis {
 
         ast::types types;
 
-        for (auto i = 0; i < expr.elements().size(); ++i) {
+        for (std::size_t i = 0; i < expr.elements().size(); ++i) {
             expr.elements().at(i)->accept(*this);
             if (auto type = expr.elements().at(i)->annotation().type) types.push_back(type);
             if (expr.elements().at(i)->kind() == ast::kind::ignore_pattern_expression && i < expr.elements().size() - 1) {
@@ -7672,7 +7669,7 @@ namespace nemesis {
                 error(expr.path()->range(), diagnostic::format("Tuple type `$` expects `$` components but you gave it `$`, pr*ck!", expr.path()->annotation().type->string(), tuple_type->components().size(), expr.fields().size()));
             }
             
-            for (auto i = 0; i < expr.fields().size(); ++i) {
+            for (std::size_t i = 0; i < expr.fields().size(); ++i) {
                 // type checking of fields is demanded to pattern matching analyzer
                 expr.fields().at(i)->accept(*this);
 
@@ -7692,7 +7689,7 @@ namespace nemesis {
             else if (!expr.invalid() && expr.fields().empty() && !tuple_type->components().empty()) {
                 std::ostringstream oss;
                 oss << "`" << 0 << "`";
-                for (auto i = 1; i < tuple_type->components().size(); ++i) oss << ", `" << i << "`";
+                for (std::size_t i = 1; i < tuple_type->components().size(); ++i) oss << ", `" << i << "`";
                 error(expr.path()->range(), diagnostic::format("You forgot to initialize component $, idiot.", oss.str()));
             }
 
@@ -7710,7 +7707,7 @@ namespace nemesis {
                 error(expr.path()->range(), diagnostic::format("Structure type `$` expects `$` fields but you gave it `$`, pr*ck!", expr.path()->annotation().type->string(), structure_type->fields().size(), expr.fields().size()));
             }
             
-            for (auto i = 0; i < expr.fields().size(); ++i) {
+            for (std::size_t i = 0; i < expr.fields().size(); ++i) {
                 // type checking of fields is demanded to pattern matching analyzer
                 expr.fields().at(i)->accept(*this);
 
@@ -7748,7 +7745,7 @@ namespace nemesis {
             else if (!expr.invalid() && expr.fields().empty() && !structure_type->fields().empty()) {
                 std::ostringstream oss;
                 oss << "`" << structure_type->fields().front().name << "`";
-                for (auto i = 1; i < structure_type->fields().size(); ++i) oss << ", `" << structure_type->fields().at(i).name << "`";
+                for (std::size_t i = 1; i < structure_type->fields().size(); ++i) oss << ", `" << structure_type->fields().at(i).name << "`";
                 error(expr.path()->range(), diagnostic::format("You forgot to initialize field $, idiot.", oss.str()));
             }
             
@@ -7784,7 +7781,7 @@ namespace nemesis {
 
             std::unordered_map<std::string, token> names;
             
-            for (auto i = 0; i < expr.fields().size(); ++i) {
+            for (std::size_t i = 0; i < expr.fields().size(); ++i) {
                 std::string name = expr.fields().at(i).field.lexeme().string();
                 auto found = std::find_if(structure_type->fields().begin(), structure_type->fields().end(), [&] (ast::structure_type::component field) { return field.name== name; });
                 // looking for this field
@@ -8236,7 +8233,7 @@ namespace nemesis {
             expr.body()->accept(*this);
             auto body = std::static_pointer_cast<ast::block_expression>(expr.body());
             // type and expr node of a loop must be only from break instructions
-            if (auto exprstmt = dynamic_cast<const ast::expression_statement*>(body->exprnode())) {
+            if (dynamic_cast<const ast::expression_statement*>(body->exprnode())) {
                 body->exprnode() = body.get();
                 body->annotation().type = types::unit();
             }
@@ -8302,7 +8299,7 @@ namespace nemesis {
             expr.body()->accept(*this);
             auto body = std::static_pointer_cast<ast::block_expression>(expr.body());
             // type and expr node of a loop must be only from break instructions
-            if (auto exprstmt = dynamic_cast<const ast::expression_statement*>(body->exprnode())) {
+            if (dynamic_cast<const ast::expression_statement*>(body->exprnode())) {
                 body->exprnode() = body.get();
                 body->annotation().type = types::unit();
             }
@@ -8395,15 +8392,26 @@ namespace nemesis {
         expr.annotation().type = expr.body()->annotation().type;
     }
 
-    void checker::visit(const ast::null_statement& stmt) {}
+    void checker::visit(const ast::null_statement& stmt) 
+    {
+        stmt.annotation().scope = scope_->enclosing();
+        stmt.annotation().visited = true;
+        stmt.annotation().resolved = true;
+    }
 
     void checker::visit(const ast::expression_statement& stmt) 
     {
+        stmt.annotation().scope = scope_->enclosing();
+        stmt.annotation().visited = true;
         stmt.expression()->accept(*this);
+        stmt.annotation().resolved = true;
     }
 
     void checker::visit(const ast::assignment_statement& stmt)
     {
+        stmt.annotation().scope = scope_->enclosing();
+        stmt.annotation().visited = true;
+
         stmt.left()->accept(*this);
         stmt.right()->accept(*this);
 
@@ -8716,10 +8724,15 @@ namespace nemesis {
         }
 
         immutability(stmt);
+
+        stmt.annotation().resolved = true;
     }
 
     void checker::visit(const ast::return_statement& stmt)
     {
+        stmt.annotation().scope = scope_->enclosing();
+        stmt.annotation().visited = true;
+
         if (stmt.expression()) stmt.expression()->accept(*this);
 
         if (auto fn = scope_->outscope(environment::kind::function)) {
@@ -8790,10 +8803,15 @@ namespace nemesis {
             }
         }
         else report(stmt.range(), "You cannot use a `return` statement outside function, dammit!");
+
+        stmt.annotation().resolved = true;
     }
 
     void checker::visit(const ast::break_statement& stmt)
     {
+        stmt.annotation().scope = scope_->enclosing();
+        stmt.annotation().visited = true;
+
         if (stmt.expression()) stmt.expression()->accept(*this);
 
         if (auto decl = scope_->outscope(environment::kind::loop)) {
@@ -8843,19 +8861,31 @@ namespace nemesis {
             }
         }
         else report(stmt.range(), "You cannot use a `break` statement outside loop, dammit!");
+
+        stmt.annotation().resolved = true;
     }
 
     void checker::visit(const ast::continue_statement& stmt) 
     {
+        stmt.annotation().scope = scope_->enclosing();
+        stmt.annotation().visited = true;
+
         if (!scope_->inside(environment::kind::loop)) {
             report(stmt.range(), "You cannot use a `continue` statement outside loop, dammit!");
         }
+
+        stmt.annotation().resolved = true;
     }
 
     void checker::visit(const ast::contract_statement& stmt) 
     {
+        stmt.annotation().scope = scope_->enclosing();
+        stmt.annotation().visited = true;
+
         stmt.condition()->accept(*this);
         if (stmt.condition()->annotation().type->category() != ast::type::category::bool_type) report(stmt.condition()->range(), diagnostic::format("Contract condition must have `bool` type but I found `$`, you f*cker!", stmt.condition()->annotation().type->string()), "", "expected bool");
+
+        stmt.annotation().resolved = true;
     }
 
     void checker::visit(const ast::field_declaration& decl) 
@@ -9859,7 +9889,7 @@ namespace nemesis {
 
         if (auto member = std::static_pointer_cast<ast::identifier_expression>(expr->member())) {
             // all generic arguments must be in simple form like A, T, S and composite or nested types are not admitted because a pattern_matcher would be necessary in that case
-            for (auto i = 0; i < member->generics().size(); ++i) {
+            for (std::size_t i = 0; i < member->generics().size(); ++i) {
                 bool specialization = false;
 
                 if (auto typearg = std::dynamic_pointer_cast<ast::path_type_expression>(member->generics().at(i))) {
@@ -9883,7 +9913,7 @@ namespace nemesis {
 
         if (auto left = std::dynamic_pointer_cast<ast::identifier_expression>(expr->expression())) {
             // all generic arguments must be in simple form like A, T, S and composite or nested types are not admitted because a pattern_matcher would be necessary in that case
-            for (auto i = 0; i < left->generics().size(); ++i) {
+            for (std::size_t i = 0; i < left->generics().size(); ++i) {
                 bool specialization = false;
 
                 if (auto typearg = std::dynamic_pointer_cast<ast::path_type_expression>(left->generics().at(i))) {
@@ -11639,6 +11669,8 @@ namespace nemesis {
         
     void substitutions::visit(const ast::for_range_expression& expr) 
     {
+        for (auto contract : expr.contracts()) contract->accept(*this);
+
         expr.variable()->accept(*this);
         expr.condition()->accept(*this);
         expr.body()->accept(*this);
@@ -11648,6 +11680,8 @@ namespace nemesis {
         
     void substitutions::visit(const ast::for_loop_expression& expr) 
     {
+        for (auto contract : expr.contracts()) contract->accept(*this);
+
         expr.condition()->accept(*this);
         expr.body()->accept(*this);
         
@@ -11678,7 +11712,7 @@ namespace nemesis {
     
     void substitutions::visit(const ast::continue_statement& stmt) {}
     
-    void substitutions::visit(const ast::contract_statement& stmt) {}
+    void substitutions::visit(const ast::contract_statement& stmt) { stmt.condition()->accept(*this); }
     
     void substitutions::visit(const ast::field_declaration& decl) { decl.type_expression()->accept(*this); }
 
@@ -11725,6 +11759,7 @@ namespace nemesis {
     {
         // substitutions may be done for concept conditions
         if (decl.generic()) decl.generic()->accept(*this);
+        for (auto contract : decl.contracts()) contract->accept(*this);
         for (auto param : decl.parameters()) param->accept(*this);
         if (decl.return_type_expression()) decl.return_type_expression()->accept(*this);
         if (decl.body()) decl.body()->accept(*this);
@@ -11733,6 +11768,7 @@ namespace nemesis {
     void substitutions::visit(const ast::property_declaration& decl)
     {
         for (auto param : decl.parameters()) param->accept(*this);
+        for (auto contract : decl.contracts()) contract->accept(*this);
         if (decl.return_type_expression()) decl.return_type_expression()->accept(*this);
         if (decl.body()) decl.body()->accept(*this);
     }

@@ -4,6 +4,8 @@
 #include <list>
 #include <string>
 
+#include "nemesis/source/source.hpp"
+
 namespace nemesis {
     class compilation {
     public:
@@ -22,6 +24,45 @@ namespace nemesis {
         diagnostic_publisher& publisher_;
         std::list<struct source> builtins;
         std::list<struct source> sources;
+    };
+
+    class Compilation {
+        using sources = std::list<source_file*>;
+        struct node {
+            std::string name;
+            std::string version;
+            sources sources;
+            
+            static node workspace(Compilation::sources sources) { return node{"", "", sources}; }
+            static node library(std::string name, std::string version, Compilation::sources sources) { return node{name, version, sources}; }
+        };
+    public:
+        Compilation(diagnostic_publisher& publisher) : publisher_(publisher) {}
+        diagnostic_publisher& publisher() const { return publisher_; }
+        /**
+         * Compile current workspace as a normal application
+         */
+        void workspace(sources sources) { workspace_ = node::workspace(sources); }
+        /**
+         * Compile current workspace as a library
+         */
+        void library(std::string name, std::string version, sources sources) { workspace_ = node::library(name, version, sources); }
+        /**
+         * Adds a dependency library to current workspace
+         */
+        void dependency(std::string name, std::string version, sources sources) { dependencies_.push_back(node::library(name, version, sources)); }
+        /**
+         * @return Current workspace
+         */
+        node workspace() const { return workspace_; }
+        /**
+         * @return List of dependencies
+         */
+        std::list<node> dependencies() const { return dependencies_; }
+    private:
+        diagnostic_publisher& publisher_;
+        node workspace_;
+        std::list<node> dependencies_;
     };
 }
 

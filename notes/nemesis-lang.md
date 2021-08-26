@@ -38,16 +38,17 @@ La documentazione ufficiale del linguaggio Nemesis.
 12. [Concept](#concept)
 13. [Polimorfismo e comportamenti](#polymorphism)
 14. [Contract](#contract)
-15. [Modularità](#modules)
-16. [E se volessi usare altri nuclei?](#use)
-17. [Senza dimenticare il C](#C-ABI)
-18. [Commenti](#comment)
-19. [Debug](#debug)
+15. [Workspace](#workspace)
+16. [Come importare una libreria nel workspace?](#use)
+17. [Fare la build del mio workspace o libreria](#build)
+18. [Senza dimenticare il C](#C-ABI)
+19. [Commenti](#comment)
+20. [Debug](#debug)
     1. [Test](#test)
     2. [Crashing](#crash)
     3. [Watchpoints-TODO](#watchpoints)
-20. [Checkpoint e resurrezione-TODO](#checkpoints)
-21. [Appendice](#appendix)
+21. [Checkpoint e resurrezione-TODO](#checkpoints)
+22. [Appendice](#appendix)
     1. [Lessico](#tokens)
     2. [Grammatica](#grammar)
 
@@ -78,13 +79,13 @@ Grande ispirazione è tratta dai linguaggi Rust, Go, Kotlin, C++ e Zig.
 ## Surprise mothafuc*a! <a name="hereiam"></a>
 Iniziamo con il classico saluto
 
-<pre><code><b>function</b> main() {
+<pre><code>start() {
     // stampa sullo schermo `Surprise mothafuc*a! 😎`
     println("Surprise mothafuc*a! 😎")
 }
 </code></pre>
 
-La funzione `main()` è il solito punto di inizio dell'esecuzione e viene invocata in automatico mentre la funzione `println()` stampa una stringa sullo schermo e va a capo. Si noti che la definizione di `nain()` implica che questa non restituisca alcun valore.
+La funzione `start()` è il punto di inizio dell'esecuzione e viene invocata in automatico mentre la funzione `println()` stampa una stringa sullo schermo e va a capo. Si noti che la definizione di `start()` implica che questa non restituisca alcun valore.
 
 ## Beauty is variable, ugliness is costant <a name="variables"></a>
 Le variabili sono fondamentali per salvare i dati all'interno di un programma a tempo di esecuzione. Si dichiarano con il prefisso `val`. Valgono le seguenti regole.
@@ -592,7 +593,7 @@ people[1].age++
 Se un array ha dimensione nota a tempo di compilazione e il suo inizializzatore contiene meno elementi del previsto, alloca i rimanenti sono inizializzati con l'ultimo valore.
 
 <pre><code>// array di 16 zeri, zeros = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-<b>val</b> zeros: [<b>int</b> : 16] = [0]
+<b>val</b> zeros: [<b>int</b> : 16] = [0 : 16]
 </code></pre>
 
 Un'array quando passato per valore viene clonato e non spostato, ammesso che il tipo degli elementi sia clonabile, altrimenti bisogna implementare il comportamento di clonazione.
@@ -608,7 +609,7 @@ Una *slice* è un particolare riferimento ad una sequenza, ovvero una sottoseque
 <b>val</b> s = "We're fuc*ed up! 🤡"
 // itera su sottosequenza e stampa caratteri unicode
 // stampa 'u ~ p ~ ! ~ 🤡 ~ '
-<b>for</b> c <b>int</b> &s[13..] { print(" {c} ~ ") }
+<b>for</b> c <b>int</b> s[13..] { print(" {c} ~ ") }
 </code></pre>
 
 Una string slice, che non è altro che un alias implicito per il tipo `[byte]`, ha tipo `chars` ed è un riferimento ad un array di byte interpretati come sequenza di caratteri.
@@ -635,7 +636,7 @@ Una tupla quando passata per valore viene clonata e non spostata, ammesso che il
 </code></pre>
 
 ### Struct <a name="struct"></a>
-Una struttura è un aggregato di dati allocato sullo stack. La mutabilità di un aggregato è determinata dall'accesso dei metodi sull'oggetto. La parola chiave `hide` serve a rendere inaccessibili i campi di un aggregato al di fuori del `nucleus` di definizione.
+Una struttura è un aggregato di dati allocato sullo stack. La mutabilità di un aggregato è determinata dall'accesso dei metodi sull'oggetto. La parola chiave `hide` serve a rendere inaccessibili i campi di un aggregato al di fuori della libreria di appartenenza.
 
 <pre><code>// tipo struttura con nome
 <b>type</b> structure(i: int, s: string)
@@ -1093,37 +1094,107 @@ La properietà di `invariant` è spesso utile su un loop, e quindi può essere a
 
 > **Nota**: le funzioni chiamate all'interno di un contract non possono mutare i propri argomenti per variare l'input o l'output, perciò il compilatore segnerà errore dove troverà funzioni che mutano gli argomenti. 
 
-## Modularità <a name="modules"></a>
-In Nemesis le definizioni di dati e funzioni vengono raccolte in moduli chiamati nuclei. Un nucleo è costituito da un gruppo di file sorgenti con estensione `.ns` che condividono le stesse definizioni di tipi di dato e funzioni.
+## Workspace
+Un workspace è una directory di lavoro contenente dei file sorgenti `.ns` che possono costituire
+1. un'applicazione, quando si intende creare un eseguibile che esegue la procedura `start`, ovvero il punto di ingresso dell'esecuzione
+2. una libreria, quando si intende raggruppare una serie di definizioni di tipi e procedure che svolgano una precisa funzione per l'utente generico
 
-Un file segnala la propria appartenenza ad un nucleo attraverso la parola chiave `nucleus`.
-Ogni `nucleus` costituisce una singola unità di compilazione.
+Per inizializzare una workspace nella directory `workspace` bisogna eseguire i seguenti comandi
+```
+$ cd workspace
+$ nemesis init
+```
+Il comando eseguirà in modalità interattiva delle domande riguardo al workspace.
+
+Un file segnala la propria appartenenza ad una libreria attraverso la parola chiave `lib`.
+Ogni `lib` costituisce una singola unità di compilazione.
+
+<pre><code>// file della libreria 'math'
+<b>lib</b> math
+// definizioni
+<b>function</b>(T) sin(x: T) T {}
+/* ... */
+</code></pre>
+
 Se un file non dovesse presentare alcuna direttiva allora si considera come una singola unità di compliazione senza appartenenza.
 
-Un nucleo si costruisce raccogliendo i file costituenti in una directory omonima. Non è possibile inserire file esterni alla directory in tale nucleo. Utilizzare la keyword `hide` di fronte ad una dichiarazione implica che quell'elemento non sarà accessibile al di fuori di tale nucleo.
+Un workspace è un directory contenente dei file sorgenti che possono essere riuniti sotto una `lib` ma che non necessariamente debbano essere pubblicati nel registro delle librerie.
+Se la dichiarazione `lib` all'interno dei sorgenti del workspace non coincide con la dichiarazione nel file `nemesis.manifest` allora il compilatore segnalerà l'errore.
+Come è strutturata una workspace?
 
 ```
-compiler
- ├─lexer.ns
- ├─parser.ns
- ├─sematic-analysis.ns
- └─codegen.ns
+workspace/
+    ├─nemesis.manifest
+    ├─nemesis.lock
+    ├─src/
+    │  ├─a.ns
+    │  └─b.ns
+    ├─cpp/
+    │  └─impl.cpp
+    └─libs/
+       ├─core:1.0.0/
+       │   └─...
+       └─math:2.0.1/
+           └─...
 ```
-Nell'esempio precedente ogni file è intestato con la direttiva `nucleus compiler` per segnale l'appartenenza al nucleo.
 
-> **Nota**: non è possibile estendere un nucleus di sistema, ovvero della libreria standard in quanto sono inaccessibili.
+La root directory `workspace` contiene il workspace dell'app o libreria. La directory `src` contiene i file sorgenti, mentre `cpp` contiene dei file sorgente C/C++ linkati nella compilazione del workspace. La directory `libs` contiene tutte le dipendenze, ovvero le librerie esterne sulle quali si appoggia l'app o la libreria del workspace. Il file `nemesis.manifest` potrebbe apparire come segue
 
-## E se volessi usare altri nuclei? <a name="use"></a>
-Risulta possibile utilizzare anche altre funzioni e tipi di dato da altri nuclei attraverso la direttiva `use`. Facciamo un esempio.
+```
+# dichiarazioni sul workspace attuale
+@lib
+name 'mylib'
+version '1.0.0'
+authors [ 'johndoe@gmail.com', 'tommyshelby@gmail.com' ]
+# lista delle dipendenze
+@dependencies
+core '2.0.1'
+math '1.3.4'
+```
 
-<pre><code>// useiamo il nucleo relativo alle funzioni di matematica
-<b>use</b> root.math
-...
-// utilizziamo le funzioni del nucleo
+e dichiara le dipendenze, e l'eventuale nome della libreria. Quando è assente la sezione `@lib`, allora il workspace è trattato come una semplice app, e non come una libreria. Il file `nemesis.lock` è invece generato a partire dal file manifest e contiene il grafo delle dipendenze con i relativi percorsi su disco e non deve essere toccato dall'utente. Potrebbe apparire come segue
+
+```
+@dependencies
+core:2.0.1:<hash>:<path>
+math:1.3.4:<hash>:<path>
+```
+
+e rappresenta una visita post ordine del grafo delle dipendenze che sarà utile per la compilazione insieme ai file sorgenti del workspace. Infine la compilazione dei file seguirà l'ordine del file lock e per ultimo verrà compilato il workspace.
+
+## Come importare una libreria nel workspace? <a name="use"></a>
+Per prima cosa, se vogliamo utilizzare la libreria `math` nel nostro workspace corrente, dovremmo aggiungere tale dipendenza attraverso il comando
+```
+$ nemesis add math
+```
+Se non è specificata la versione, allora la più stabile è utilizzata, altrimenti si specifica come segue
+```
+$ nemesis add math '2.0.1'
+```
+Una dipendenza si rimuove con il comando `remove`, similmente ad `add`.
+
+L'esecuzione dei comandi `add` o `remove` non modifica solo il file `nemesis.manifest` ma risolve anche un nuovo grafo delle dipendenze `nemesis.lock`.
+
+Una volta installata, risulta possibile importare le definizioni della libreria `math` attraverso la direttiva `use`. Facciamo un esempio.
+
+<pre><code>// vengono importare le definzioni dalla libreria 'math' nel workspace attuale
+<b>use</b> math
+// utilizziamo le funzioni della liberia 'math'
 println("sin(90) = {math.sin(math.pi / 2)}")
 </code></pre>
 
-Per utilizzare dati e funzioni di un altro nucleo è necessario qualificare per intero il nome. Quando l'appartenenza ad un nucleo è preceduta da `hide` significa che le dichiarazioni del file sorgente non sono accessibili all'esterno nemmeno agli altri componenti del nucleo.
+Chiaramente non è possibile importare definizioni nascoste con la parola chiave `hide`.
+
+## Fare la build del mio workspace o libreria <a name="build"></a>
+Una volta costruiti i file `nemesis.manifest` e quindi generato anche il file `nemesis.lock` è possibile fare la build dell'intero progetto con il comando
+```
+$ nemesis build
+```
+il quale genererà un file eseguibile `app` nella directory del workspace se si tratta di un'applicazione, altrimenti verificherà la correttezza della libreria.
+Nel caso speciale di un'applicazione questa può essere eseguita direttamente con il comando senza che l'eseguibile venga salvato su disco
+```
+$ nemesis run
+```
 
 ## Senza dimenticare il C <a name="C-ABI"></a>
 Attraverso la parola chiave `extern` è possibile sfruttare il linkage esterno per rendere visibili definizioni di altre unità di compilazione C. Il fatto che venga utilizzata la *C convention* è implicita. La parola chiave `extern` può essere abbinata a un blocco o a una dichiarazione di funzione.
@@ -1165,6 +1236,11 @@ Attraverso dei blocchi `test` è possibile testare dei blocchi di codice quando 
 </code></pre>
 
 Si possono scrivere quanti test si vogliono e dove si vuole purchè nel contesto di una funzione o nel contesto globale. I test sono eseguiti nell'ordine in cui vengono scritti.
+
+L'esecuzione dei test relativi ad un determinate workspace avviene con il comando
+```
+$ nemesis test
+```
 
 ### Crashing <a name="crash"></a>
 La funzione primitiva `crash`, simile ad 'abort' in C, viene invocata con un messaggio o meno quando il programma fallisce a tempo di esecuzione. Può essere invocata sia implicitamente che esplicitamente.
@@ -1319,7 +1395,7 @@ keywords        : <b>as</b>
                 | <b>invariant</b>
                 | <b>is</b>
                 | <b>mutable</b>
-                | <b>nucleus</b>
+                | <b>lib</b>
                 | <b>range</b>
                 | <b>require</b>
                 | <b>return</b>
@@ -1644,9 +1720,9 @@ global-declaration : <b>hide</b>?
 
 use-declaration : <b>use</b> identifier
 
-nucleus-declaration : <b>nucleus</b> identifier
+lib-declaration : <b>lib</b> identifier
 
-source-declaration : nucleus-declaration? global-declaration*
+source-declaration : lib-declaration? global-declaration*
 </code></pre>
 ---
 

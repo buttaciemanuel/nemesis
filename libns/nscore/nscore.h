@@ -38,6 +38,7 @@ template<typename... Args> std::string __format(std::string format, Args ...args
 template<typename T> constexpr std::size_t nscore_sizeof() { return sizeof(T); }
 void nscore_println(std::string s);
 void nscore_crash(std::string message, const char* file = nullptr, int line = 0, int column = 0);
+void nscore_assert(bool condition, std::string message, const char* file = nullptr, int line = 0, int column = 0);
 void nscore_exit(std::int32_t code);
 void nscore_stacktrace();
 

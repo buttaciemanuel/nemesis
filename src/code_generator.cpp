@@ -103,6 +103,10 @@ namespace nemesis {
 
     const ast::function_declaration* code_generator::entry_point() const { return entry_point_; }
 
+    void code_generator::trace(bool flag) { trace_ = flag; }
+
+    bool code_generator::trace() const { return trace_; }
+
     std::string code_generator::emit(ast::pointer<ast::type> type) const
     {
         auto it = impl::cpp_builtins.find(type->string());
@@ -129,7 +133,7 @@ namespace nemesis {
 
             if (tuple_type->components().size() >= 1) result << emit(tuple_type->components().front());
             
-            for (auto i = 1; i < tuple_type->components().size(); ++i) result << ", " << emit(tuple_type->components().at(i));
+            for (std::size_t i = 1; i < tuple_type->components().size(); ++i) result << ", " << emit(tuple_type->components().at(i));
 
             result << ">";
 
@@ -194,7 +198,7 @@ namespace nemesis {
 
             if (tuple_type->components().size() >= 1) result << emit(tuple_type->components().front());
             
-            for (auto i = 1; i < tuple_type->components().size(); ++i) result << ", " << emit(tuple_type->components().at(i));
+            for (std::size_t i = 1; i < tuple_type->components().size(); ++i) result << ", " << emit(tuple_type->components().at(i));
 
             result << ">";
 
@@ -379,6 +383,47 @@ namespace nemesis {
         else throw std::invalid_argument("code_generator::emit_anonymous_type(): invalid type " + type->string());
     }
 
+    void code_generator::emit_in_contracts(const ast::node& current)
+    {
+        if (auto outer = scopes_.at(&current)->outscope(environment::kind::loop)) {
+            // first, before return statement, we must test invariant and ensure contracts, if any
+            if (auto loop = dynamic_cast<const ast::for_loop_expression*>(outer)) {
+                for (auto contract : loop->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_ensure()) contract->accept(*this);
+            }
+            else if (auto loop = dynamic_cast<const ast::for_range_expression*>(outer)) {
+                for (auto contract : loop->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_ensure()) contract->accept(*this);
+            }
+        }
+        else if (auto outer = scopes_.at(&current)->outscope(environment::kind::function)) {
+            if (auto function = dynamic_cast<const ast::function_declaration*>(outer)) {
+                for (auto contract : function->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_ensure()) contract->accept(*this);
+            }
+            else if (auto function = dynamic_cast<const ast::property_declaration*>(outer)) {
+                for (auto contract : function->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_ensure()) contract->accept(*this);
+            }
+        }
+    }
+    
+    void code_generator::emit_out_contracts(const ast::node& current)
+    {
+        if (auto outer = scopes_.at(&current)->outscope(environment::kind::loop)) {
+            if (auto loop = dynamic_cast<const ast::for_loop_expression*>(outer)) {
+                for (auto contract : loop->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
+            }
+            else if (auto loop = dynamic_cast<const ast::for_range_expression*>(outer)) {
+                for (auto contract : loop->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
+            }
+        }
+        else if (auto outer = scopes_.at(&current)->outscope(environment::kind::function)) {
+            if (auto function = dynamic_cast<const ast::function_declaration*>(outer)) {
+                for (auto contract : function->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
+            }
+            else if (auto function = dynamic_cast<const ast::property_declaration*>(outer)) {
+                for (auto contract : function->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
+            }
+        }
+    }
+    
     std::string code_generator::fullname(const ast::declaration *decl) const
     {
         if (decl == entry_point_) return "main";
@@ -471,7 +516,7 @@ namespace nemesis {
 
         result << fullname(decl) << "(";
 
-        for (auto i = 0; i < decl->parameters().size(); ++i) {
+        for (std::size_t i = 0; i < decl->parameters().size(); ++i) {
             if (i > 0) result << ", ";
             result << emit(decl->parameters().at(i)->annotation().type, std::static_pointer_cast<ast::parameter_declaration>(decl->parameters().at(i))->name().lexeme().string());
         }
@@ -620,7 +665,7 @@ namespace nemesis {
 
     void code_generator::visit(const ast::var_declaration& decl)
     {
-        output_.line() << "__record.location(" << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
+        if (trace_ && decl.annotation().scope->kind() != ast::kind::nucleus) output_.line() << "__record.location(" << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
 
         output_.line() << emit(decl.annotation().type, fullname(&decl));
 
@@ -676,10 +721,12 @@ namespace nemesis {
 
         if (decl.body()) {
             output_.stream() << " {\n";
-            // stack activation record for stacktrace
             {
                 struct guard inner(output_);
-                output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+                // stack activation record for stacktrace
+                if (trace_) output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+                // contracts
+                emit_in_contracts(decl);
             }
             // if entry point it initializes arguments properly from __argc, __argv
             if (&decl == entry_point_ && !decl.parameters().empty()) {
@@ -716,6 +763,8 @@ namespace nemesis {
                     break;
                 default:
                 {
+                    // on exit we must emit out contracts
+                    emit_out_contracts(decl);
                     // simple expression with return
                     struct guard inner(output_);
                     output_.line() << "return ";
@@ -738,10 +787,12 @@ namespace nemesis {
 
         if (decl.body()) {
             output_.stream() << " {\n";
-            // stack activation record for stacktrace
             {
                 struct guard inner(output_);
-                output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+                // stack activation record for stacktrace
+                if (trace_) output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+                // contracts
+                emit_in_contracts(decl);
             }
             // body traversal
             switch (decl.body()->kind()) {
@@ -768,6 +819,8 @@ namespace nemesis {
                     break;
                 default:
                 {
+                    // on exit we must emit out contracts
+                    emit_out_contracts(decl);
                     // simple expression with return
                     struct guard inner(output_);
                     output_.line() << "return ";
@@ -996,7 +1049,7 @@ namespace nemesis {
                 auto non_generic_name = fn->name().lexeme().string();
                 auto first = non_generic_name.find_first_of('(');
                 auto last = non_generic_name.find_last_of(')');
-                if (first != -1 && last != -1) non_generic_name.erase(first, last);
+                if (first != std::string::npos && last != std::string::npos) non_generic_name.erase(first, last);
                 // test name against builtin functions
                 if (non_generic_name == "allocate") output_.stream() << "nscore_allocate<" << emit(expr.generics().front()->annotation().type) << ">";
                 else if (non_generic_name == "deallocate") output_.stream() << "nscore_deallocate";
@@ -1066,9 +1119,9 @@ namespace nemesis {
 
         if (!expr.expression()->annotation().istype) {
             // method (function) access
-            if (auto method = dynamic_cast<const ast::function_declaration*>(expr.member()->annotation().referencing)) expr.member()->accept(*this);
+            if (dynamic_cast<const ast::function_declaration*>(expr.member()->annotation().referencing)) expr.member()->accept(*this);
             // method (property) call because it is a computed property
-            else if (auto method = dynamic_cast<const ast::property_declaration*>(expr.member()->annotation().referencing)) {
+            else if (dynamic_cast<const ast::property_declaration*>(expr.member()->annotation().referencing)) {
                 expr.member()->accept(*this);
                 output_.stream() << "(";
                 // when property is called in OOP notation then callee is first argument object
@@ -1149,8 +1202,11 @@ namespace nemesis {
                     expr.arguments().at(i)->accept(*this);
                 }
                 
-                // with crash() call we implicitly pass file and line info to print the error
-                if (expr.callee()->annotation().referencing && fullname(expr.callee()->annotation().referencing) == "nscore_crash") output_.stream() << ", \"" << expr.range().filename.string() << "\", " << expr.range().bline << ", " << expr.range().bcolumn;
+                // with crash() or assert() call we implicitly pass file and line info to print the error
+                if (expr.callee()->annotation().referencing) {
+                    std::string full_name = fullname(expr.callee()->annotation().referencing);
+                    if (full_name == "nscore_crash" || full_name == "nscore_assert") output_.stream() << ", \"" << expr.range().filename.string() << "\", " << expr.range().bline << ", " << expr.range().bcolumn;
+                }
 
                 output_.stream() << ")";
             }
@@ -1303,8 +1359,6 @@ namespace nemesis {
         guard guard(output_);
         bool is_function_body = false;
 
-        for (auto contract : expr.contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_ensure()) contract->accept(*this);
-
         if (auto fn = scopes_.at(&expr)->outscope(environment::kind::function)) {
             auto body = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->body().get() : static_cast<const ast::property_declaration*>(fn)->body().get();
             is_function_body = &expr == body;
@@ -1334,7 +1388,7 @@ namespace nemesis {
                         if (types::compatible(types::unit(), value->annotation().type)) stmt->accept(*this);
                         // save results only if its type is not (), which is 'void' in C/C++
                         else if (!result_vars.empty()) {
-                            output_.line() << "__record.location(" << stmt->range().bline << ", " << stmt->range().bcolumn << ");\n";
+                            if (trace_) output_.line() << "__record.location(" << stmt->range().bline << ", " << stmt->range().bcolumn << ");\n";
                             output_.line() << result_vars.top() << " = ";
                             value->accept(*this);
                             output_.stream() << ";\n";
@@ -1346,6 +1400,9 @@ namespace nemesis {
         }
         // 'return __result' is emitted only if we are inside main function or property body and at its end
         if (is_function_body && expr.exprnode() && expr.exprnode()->kind() != ast::kind::return_statement && !types::compatible(expr.annotation().type, types::unit())) {
+            // on exit we must emit out contracts
+            emit_out_contracts(*scopes_.at(&expr)->outscope(environment::kind::function));
+            // return result
             result_vars.pop();
             output_.line() << "return __result;\n";
         }
@@ -1433,7 +1490,7 @@ namespace nemesis {
     void code_generator::visit(const ast::expression_statement& stmt)
     {
         // stack trace update of location
-        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        if (trace_) output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
 
         output_.line();
 
@@ -1455,7 +1512,7 @@ namespace nemesis {
     void code_generator::visit(const ast::assignment_statement& stmt)
     {
         // stack trace update of location
-        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        if (trace_) output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
 
         output_.line();
         // 1) first of all save assigned value inside temporary variable '__temp...', like 'val __temp... = rhs'
@@ -1536,8 +1593,11 @@ namespace nemesis {
 
     void code_generator::visit(const ast::return_statement& stmt)
     {
+        // first, before return statement, we must test invariant and ensure contracts, if any
+        emit_out_contracts(*stmt.annotation().scope);
+
         // stack trace update of location
-        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        if (trace_) output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
 
         if (stmt.expression()) {
             switch (stmt.expression()->kind()) {
@@ -1570,10 +1630,10 @@ namespace nemesis {
     void code_generator::visit(const ast::contract_statement& stmt)
     {
         // stack trace update of location
-        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        if (trace_) output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
 
-        output_.line() << "if (!(";
+        output_.line() << "nscore_assert(";
         stmt.condition()->accept(*this);
-        output_.stream() << ")) nscore_crash(\"contract failure, be more careful next time, dammit!\", \"" << stmt.condition()->range().filename << "\", " << stmt.condition()->range().bline << ", " << stmt.condition()->range().bcolumn << ");\n";
+        output_.stream() << ", \"contract failure, be more careful next time, dammit!\", \"" << stmt.range().filename << "\", " << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
     }
 }

@@ -3,7 +3,12 @@ nucleus nscore
 // prints a string on the console
 println(s: string) {}
 
-// crash and stops the process printing a message
+// test condition, if it fails, then program stops execution with non zero status
+// prints eventually stacktrace
+assert(condition: bool, message: string) {}
+
+// crash and stops the process printing a message with non zero status
+// prints eventually stacktrace
 crash(message: string) {}
 
 // allocate a buffer of objects dynamically

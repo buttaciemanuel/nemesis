@@ -156,12 +156,9 @@ namespace nemesis {
         
     bool source_handler::load(utf8::span filename)
     {
-        std::ifstream stream(reinterpret_cast<const char*>(filename.data()), 
-                             std::ios_base::binary);
+        std::ifstream stream(reinterpret_cast<const char*>(filename.data()), std::ios_base::binary);
 
-        if (!stream.is_open()) {
-            return false;
-        }
+        if (!stream.is_open()) return false;
 
         auto fbuf = stream.rdbuf();
         int size = fbuf->pubseekoff(0, stream.end, stream.in);

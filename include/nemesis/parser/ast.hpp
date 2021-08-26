@@ -380,13 +380,36 @@ namespace nemesis {
          * @note Any statement could contain the ending semicolon `;` if written
          */
         class statement : public node {
-        protected:
-            /**
-             * Construct a new statement object
-             * @param range Range in source code
-             */
-            statement(source_range range);
         public:
+            /**
+             * Annotation for statement, but it is intended more precisely for declarations
+             */
+            struct annotation {
+                /**
+                 * Type annotation
+                 */
+                ast::pointer<ast::type> type = nullptr;
+                /**
+                 * Enclosing scope
+                 */
+                const ast::node* scope = nullptr;
+                /**
+                 * Visited symbol for analysis
+                 */
+                bool visited : 1;
+                /**
+                 * Resolved symbol for analysis
+                 */
+                bool resolved : 1;
+                /**
+                 * Use count, which is the number a declaration name is referenced
+                 */
+                unsigned long usecount = 0;
+                /**
+                 * Constructor
+                 */
+                annotation() : visited(false), resolved(false) {}
+            };
             /**
              * Destroys the statement object
              */
@@ -395,6 +418,20 @@ namespace nemesis {
              * Clone a statement
              */
             virtual pointer<statement> sclone() const { return nullptr; }
+            /**
+             * @return Annotation
+             */
+            statement::annotation& annotation() const { return annotation_; }
+        protected:
+            /**
+             * Construct a new statement object
+             * @param range Range in source code
+             */
+            statement(source_range range);
+            /**
+             * Annotation
+             */
+            mutable struct annotation annotation_;
         };
         /**
          * Empty statements, for example `,`
@@ -703,35 +740,6 @@ namespace nemesis {
         class declaration : public statement {
         public:
             /**
-             * Annotation for type declaration to store the declared type
-             */
-            struct annotation {
-                /**
-                 * Type annotation
-                 */
-                ast::pointer<ast::type> type = nullptr;
-                /**
-                 * Enclosing scope
-                 */
-                const ast::node* scope = nullptr;
-                /**
-                 * Visited symbol for analysis
-                 */
-                bool visited : 1;
-                /**
-                 * Resolved symbol for analysis
-                 */
-                bool resolved : 1;
-                /**
-                 * Use count, which is the number a declaration name is referenced
-                 */
-                unsigned long usecount = 0;
-                /**
-                 * Constructor
-                 */
-                annotation() : visited(false), resolved(false) {}
-            };
-            /**
              * Destroys the declaration object
              */
             virtual ~declaration();
@@ -750,10 +758,6 @@ namespace nemesis {
              */
             bool is_hidden() const;
             /**
-             * @return Annotation
-             */
-            declaration::annotation& annotation() const { return annotation_; }
-            /**
              * Clone a declaration
              */
             virtual pointer<declaration> clone() const = 0;
@@ -762,10 +766,6 @@ namespace nemesis {
              * @param range Range in source code
              */
             declaration(source_range range);
-            /**
-             * Annotation
-             */
-            mutable struct annotation annotation_;
         private:
             /**
              * Hidden flag
@@ -3563,10 +3563,6 @@ namespace nemesis {
              */
             const ast::node*& exprnode() const { return exprnode_; }
             /**
-             * @return Reference to contracts
-             */
-            ast::pointers<ast::statement>& contracts() const { return contracts_; }
-            /**
              * @return Node kind
              */
             ast::kind kind() const { return kind::block_expression; } 
@@ -3579,10 +3575,6 @@ namespace nemesis {
              * Annotation for expression node
              */
             mutable const ast::node* exprnode_ = nullptr;
-            /**
-             * Annotation for contracts
-             */
-            mutable ast::pointers<ast::statement> contracts_;
         };
         /**
          * Function expression which cannot capture local environment, for example

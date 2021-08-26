@@ -59,9 +59,13 @@ namespace nemesis {
                  */
                 ast = 0x4,
                 /**
-                 * 
+                 * Just compiles files without running
                  */
-                compile = 0x8
+                compile = 0x8,
+                /**
+                 * Dumps stack-trace if the program fails
+                 */
+                trace = 0x10
             };
             options() = default;
             /**

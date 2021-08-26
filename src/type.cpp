@@ -5,10 +5,11 @@
 namespace nemesis {
     constval::constval()
     {
-        std::memset(this, 0, sizeof(constval));
+        std::memset(reinterpret_cast<void*>(this), 0, sizeof(constval));
         type = types::unknown();
         new (&s) string();
         new (&seq) sequence();
+
     }
 
     namespace ast {

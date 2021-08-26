@@ -465,7 +465,7 @@ namespace nemesis {
                     unsigned max_line_width = max_width;
 
                     for (unsigned line = minline; line <= maxline; ++line) {
-                        auto w = file.line(line).width();
+                        unsigned int w = file.line(line).width();
                         if (w > max_line_width) max_line_width = w;
                     }
 

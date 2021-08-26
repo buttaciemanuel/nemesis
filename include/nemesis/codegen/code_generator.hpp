@@ -15,6 +15,8 @@ namespace nemesis {
         enum kind kind() const;
         void set_entry_point(const ast::function_declaration* decl);
         const ast::function_declaration* entry_point() const;
+        void trace(bool flag);
+        bool trace() const;
         std::string emit(ast::pointer<ast::type> type) const;
         std::string emit(ast::pointer<ast::type> type, std::string variable) const;
         std::string emit(constval value) const;
@@ -34,7 +36,7 @@ namespace nemesis {
             std::ostringstream& stream() { return stream_; }
             std::ostringstream& line() 
             {
-                stream_ << std::string(4 * (indent_ - 1), ' '); 
+                if (indent_ > 0) stream_ << std::string(4 * (indent_ - 1), ' '); 
                 return stream_;
             } 
         private:
@@ -53,6 +55,8 @@ namespace nemesis {
 
         bool emit_if_constant(const ast::expression& expr);
         void emit_anonymous_type(ast::pointer<ast::type> type);
+        void emit_in_contracts(const ast::node& current);
+        void emit_out_contracts(const ast::node& current);
 
         void visit(const ast::bit_field_type_expression& expr);
         void visit(const ast::path_type_expression& expr);
@@ -136,6 +140,10 @@ namespace nemesis {
          * if (true) { a = "ok" } else { a = "damn" }
          */
         std::stack<std::string> result_vars;
+        /**
+         * Back tracing mode
+         */
+        bool trace_ = false;
     };
 }
 
