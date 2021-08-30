@@ -24,7 +24,7 @@ namespace nemesis {
         class declaration;
         class type;
         struct visitor;
-        struct nucleus;
+        struct workspace;
         /**
          * A path is a sequence of names which represent a declaration
          * name with absolute path.
@@ -147,7 +147,7 @@ namespace nemesis {
             variant_declaration,
             alias_declaration,
             use_declaration,
-            nucleus_declaration,
+            workspace_declaration,
             source_unit_declaration,
             bit_field_type_expression,
             path_type_expression,
@@ -191,7 +191,7 @@ namespace nemesis {
             for_loop_expression,
             for_range_expression,
             if_expression,
-            nucleus
+            workspace
         };
         /**
          * Fundamental class which represents a node inside the
@@ -752,8 +752,8 @@ namespace nemesis {
              * Tells if declaration is hidden, which
              * means that is has `hide` keyword before.
              * This prevents the declaration to be visibile
-             * outside its nucleus
-             * @return true If declaration is not visible outside the nucleus
+             * outside its workspace
+             * @return true If declaration is not visible outside the workspace
              * @return false Othwerwise
              */
             bool is_hidden() const;
@@ -2230,8 +2230,8 @@ namespace nemesis {
             mutable pointer<ast::expression> type_expr_;
         };
         /**
-         * Use declaration for nucleus declarations, for example
-         * `use ns.math` for importing an entire nucleus
+         * Use declaration for workspace declarations, for example
+         * `use ns.math` for importing an entire workspace
          * `use ns.namespace.vector` for importing a specific declaration
          */
         class use_declaration : public declaration {
@@ -2239,7 +2239,7 @@ namespace nemesis {
             /**
              * Constructs a new use declaration object
              * @param range Range of source code 
-             * @param path Path name of used nucleus
+             * @param path Path name of used workspace
              */
             use_declaration(source_range range, token path);
             /**
@@ -2247,7 +2247,7 @@ namespace nemesis {
              */
             ~use_declaration();
             /**
-             * @return Path name of used nucleus
+             * @return Path name of used workspace
              */
             token& path() const;
             /**
@@ -2272,29 +2272,29 @@ namespace nemesis {
             ast::kind kind() const { return kind::use_declaration; } 
         private:
             /**
-             * Path name of used nucleus
+             * Path name of used workspace
              */
             mutable token path_;
         };
         /**
-         * Nucleus declaration for specifying to wich nucleus a source
-         * file belongs, for example `nucleus ns.testing` tells that the
-         * current file belongs to the ns.testing nucleus
+         * workspace declaration for specifying to wich workspace a source
+         * file belongs, for example `workspace ns.testing` tells that the
+         * current file belongs to the ns.testing workspace
          */
-        class nucleus_declaration : public declaration {
+        class workspace_declaration : public declaration {
         public:
             /**
-             * Constructs a new nucleus declaration object
+             * Constructs a new workspace declaration object
              * @param range Range of source text
-             * @param path Path name of nucleus
+             * @param path Path name of workspace
              */
-            nucleus_declaration(source_range range, token path);
+            workspace_declaration(source_range range, token path);
             /**
              * Destroys the declaration object
              */
-            ~nucleus_declaration();
+            ~workspace_declaration();
             /**
-             * @return Path name of nucleus
+             * @return Path name of workspace
              */
             token& path() const;
             /**
@@ -2307,7 +2307,7 @@ namespace nemesis {
              */
             pointer<declaration> clone() const 
             { 
-                auto result = create<nucleus_declaration>(range_, path_);
+                auto result = create<workspace_declaration>(range_, path_);
                 result->annotation_ = annotation_;
                 result->hidden(is_hidden());
                 return result;
@@ -2316,16 +2316,16 @@ namespace nemesis {
             /**
              * @return Node kind
              */
-            ast::kind kind() const { return kind::nucleus_declaration; } 
+            ast::kind kind() const { return kind::workspace_declaration; } 
         private:
             /**
-             * Path name of nucleus
+             * Path name of workspace
              */
             mutable token path_;
         };
         /**
          * Source unit declaration, which is a source file declaration
-         * containing information about nucleus to which the fle belongs,
+         * containing information about workspace to which the fle belongs,
          * useed names and statements
          */
         class source_unit_declaration : public declaration {
@@ -2335,26 +2335,26 @@ namespace nemesis {
              */
             struct annotation {
                 /**
-                 * Nucleus which hold the declarations of this AST
+                 * workspace which hold the declarations of this AST
                  */
-                ast::nucleus* nucleus = nullptr;
+                ast::workspace* workspace = nullptr;
             };
             /**
              * Constructs a new source unit declaration object
              * @param range Range of source code, which is the whole source file
-             * @param nucleus Nucleus declaration, if any
-             * @param imports Imported nucleuses
+             * @param workspace workspace declaration, if any
+             * @param imports Imported workspacees
              * @param statements Statements
              */
-            source_unit_declaration(source_range range, pointer<ast::statement> nucleus, pointers<ast::statement> imports, pointers<ast::statement> statements);
+            source_unit_declaration(source_range range, pointer<ast::statement> workspace, pointers<ast::statement> imports, pointers<ast::statement> statements);
             /**
              * Destroys the declaration object
              */
             ~source_unit_declaration();
             /**
-             * @return Nucleus declaration
+             * @return workspace declaration
              */
-            pointer<ast::statement> nucleus() const;
+            pointer<ast::statement> workspace() const;
             /**
              * @return USe declarations
              */
@@ -2377,7 +2377,7 @@ namespace nemesis {
              */
             pointer<declaration> clone() const 
             { 
-                auto result = create<source_unit_declaration>(range_, nucleus_ ? nucleus_->sclone() : nullptr, ast::clone(imports_), ast::clone(statements_));
+                auto result = create<source_unit_declaration>(range_, workspace_ ? workspace_->sclone() : nullptr, ast::clone(imports_), ast::clone(statements_));
                 result->annotation_ = annotation_;
                 result->hidden(is_hidden());
                 return result; 
@@ -2389,9 +2389,9 @@ namespace nemesis {
             ast::kind kind() const { return kind::source_unit_declaration; } 
         private:
             /**
-             * Nucleus declaration 
+             * workspace declaration 
              */
-            pointer<ast::statement> nucleus_;
+            pointer<ast::statement> workspace_;
             /**
              * Import declarations 
              */
@@ -5600,36 +5600,32 @@ namespace nemesis {
             mutable pointer<ast::expression> else_body_;
         };
         /**
-         * A nucleus is a collection of source files which shares the same
-         * name declarations. A nucleus is similar to a Java package. Files
-         * who share the same nucleus must have the same nucleus directory
-         * and reside in the same directory. A nucleus is a child of another
+         * A workspace is a collection of source files which shares the same
+         * name declarations. A workspace is similar to a Java package. Files
+         * who share the same workspace must have the same workspace directory
+         * and reside in the same directory. A workspace is a child of another
          * if it resides in a subdirectory of the parent and its prefix is the
          * same of the parent.
          * For example `a.b` is child of `a` if `b` is a subdirectory of `a`.
          * So `.` in path notation is replaced with `/` for files or directories.
          */
-        struct nucleus : public declaration {
+        struct workspace : public declaration {
             /**
-             * Full name of the nucleus, for example `a.b.c`
+             * Full name of the workspace, for example `math`
              */
             std::string name;
             /**
-             * Nucleus type
+             * Name of the package to which it belongs, a package is a node, for example `math@1.0.1`, which is package `math` at version `1.0.1`
+             */
+            std::string package;
+            /**
+             * workspace type
              */
             ast::pointer<ast::type> type;
             /**
-             * Parent nucleus if any
+             * Imported workspacees
              */
-            nucleus* parent = nullptr;
-            /**
-             * Children nucleuses
-             */
-            std::unordered_map<std::string, nucleus*> children;
-            /**
-             * Imported nucleuses
-             */
-            std::unordered_map<std::string, nucleus*> imports;
+            std::unordered_map<std::string, workspace*> imports;
             /**
              * Source files associated
              */
@@ -5670,18 +5666,24 @@ namespace nemesis {
              */
             std::vector<const ast::declaration*> globals;
             /**
-             * Tells if nucleus is builtin
+             * Tells if workspace is builtin
              */
             bool builtin = false;
             /**
              * Default constructor
              */
-            nucleus() : declaration(source_range()), name("__null") {}
+            workspace() : declaration(source_range()), name("__null") {}
             /**
              * Constructor with name
-             * @param name Nucleus name
+             * @param name workspace name
              */
-            nucleus(const std::string& name) : declaration(source_range()), name(name) {}
+            workspace(const std::string& name) : declaration(source_range()), name(name) {}
+            /**
+             * Constructor with name
+             * @param name Workspace name
+             * @param package Package name
+             */
+            workspace(const std::string& name, const std::string& package) : declaration(source_range()), name(name), package(package) {}
             /**
              * Clone
              */
@@ -5694,7 +5696,7 @@ namespace nemesis {
             /**
              * @return Node kind
              */
-            ast::kind kind() const { return kind::nucleus; } 
+            ast::kind kind() const { return kind::workspace; } 
         };
         /**
          * Base class for AST traversal, contains all method to traverse a
@@ -5772,7 +5774,7 @@ namespace nemesis {
             virtual void visit(const variant_declaration& decl) {}
             virtual void visit(const alias_declaration& decl) {}
             virtual void visit(const use_declaration& decl) {}
-            virtual void visit(const nucleus_declaration& decl) {}
+            virtual void visit(const workspace_declaration& decl) {}
             virtual void visit(const source_unit_declaration& decl) {}
         };
         /**
@@ -5852,7 +5854,7 @@ namespace nemesis {
             virtual void visit(const variant_declaration& decl);
             virtual void visit(const alias_declaration& decl);
             virtual void visit(const use_declaration& decl);
-            virtual void visit(const nucleus_declaration& decl);
+            virtual void visit(const workspace_declaration& decl);
             virtual void visit(const source_unit_declaration& decl);
             /**
              * Starts printing a statement

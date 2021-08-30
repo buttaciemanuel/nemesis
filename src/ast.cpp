@@ -1546,29 +1546,29 @@ namespace nemesis {
         
         void use_declaration::accept(visitor& visitor) const { visitor.visit(*this); }
 
-        nucleus_declaration::nucleus_declaration(source_range range, token path) :
+        workspace_declaration::workspace_declaration(source_range range, token path) :
             declaration(range),
             path_(path)
         {}
             
-        nucleus_declaration::~nucleus_declaration() {}
+        workspace_declaration::~workspace_declaration() {}
         
-        token& nucleus_declaration::path() const { return path_; }
+        token& workspace_declaration::path() const { return path_; }
             
-        void nucleus_declaration::accept(visitor& visitor) const { visitor.visit(*this); }
+        void workspace_declaration::accept(visitor& visitor) const { visitor.visit(*this); }
 
-        source_unit_declaration::source_unit_declaration(source_range range, pointer<ast::statement> nucleus, 
+        source_unit_declaration::source_unit_declaration(source_range range, pointer<ast::statement> workspace, 
                                     pointers<ast::statement> imports,
                                     pointers<ast::statement> statements) :
             declaration(range),
-            nucleus_(nucleus),
+            workspace_(workspace),
             imports_(imports),
             statements_(statements)
         {}
         
         source_unit_declaration::~source_unit_declaration() {}
         
-        pointer<ast::statement> source_unit_declaration::nucleus() const { return nucleus_; }
+        pointer<ast::statement> source_unit_declaration::workspace() const { return workspace_; }
         
         pointers<ast::statement>& source_unit_declaration::imports() const { return imports_; }
         
@@ -2767,17 +2767,17 @@ namespace nemesis {
             stream_ << prefix_.str(decl) << impl::color::green << "use_declaration " << impl::color::reset << decl.range().begin() << " `" << impl::color::white << decl.path().lexeme() << impl::color::reset << "`\n";
         }
 
-        void printer::visit(const nucleus_declaration& decl)
+        void printer::visit(const workspace_declaration& decl)
         {
-            stream_ << prefix_.str(decl) << impl::color::green << "nucleus_declaration " << impl::color::reset << decl.range().begin() << " `" << impl::color::white << decl.path().lexeme() << impl::color::reset << "`\n";
+            stream_ << prefix_.str(decl) << impl::color::green << "workspace_declaration " << impl::color::reset << decl.range().begin() << " `" << impl::color::white << decl.path().lexeme() << impl::color::reset << "`\n";
         }
 
         void printer::visit(const source_unit_declaration& decl)
         {
             stream_ << prefix_.str(decl) << impl::color::green << "source_unit_declaration " << impl::color::reset << decl.range().begin();
             
-            if (decl.nucleus()) {
-                const token& path = dynamic_cast<const ast::nucleus_declaration*>(decl.nucleus().get())->path();
+            if (decl.workspace()) {
+                const token& path = dynamic_cast<const ast::workspace_declaration*>(decl.workspace().get())->path();
                 stream_ << " `" << impl::color::white << path.lexeme() << impl::color::reset << "`";
             }
             

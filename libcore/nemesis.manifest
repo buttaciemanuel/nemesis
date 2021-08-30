@@ -1,0 +1,5 @@
+@library
+name 'core'
+version '1.0.0'
+builtin true
+@dependencies

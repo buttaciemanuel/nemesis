@@ -196,10 +196,10 @@ namespace nemesis {
         return unknown_; 
     }
     
-    ast::pointer<ast::nucleus_type> types::nucleus() 
+    ast::pointer<ast::workspace_type> types::workspace() 
     {
-        static ast::pointer<ast::nucleus_type> nucleus_(ast::create<ast::nucleus_type>());
-        return nucleus_; 
+        static ast::pointer<ast::workspace_type> workspace_(ast::create<ast::workspace_type>());
+        return workspace_; 
     }
 
     ast::pointer<ast::generic_type> types::generic() 

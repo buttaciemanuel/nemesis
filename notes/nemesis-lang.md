@@ -40,7 +40,7 @@ La documentazione ufficiale del linguaggio Nemesis.
 14. [Contract](#contract)
 15. [Workspace](#workspace)
 16. [Come importare una libreria nel workspace?](#use)
-17. [Fare la build del mio workspace o libreria](#build)
+17. [Fare la build della mia app o libreria](#build)
 18. [Senza dimenticare il C](#C-ABI)
 19. [Commenti](#comment)
 20. [Debug](#debug)
@@ -1101,6 +1101,7 @@ Un workspace è una directory di lavoro contenente dei file sorgenti `.ns` che p
 
 Per inizializzare una workspace nella directory `workspace` bisogna eseguire i seguenti comandi
 ```
+$ mkdir workspace
 $ cd workspace
 $ nemesis init
 ```
@@ -1119,7 +1120,7 @@ Ogni `lib` costituisce una singola unità di compilazione.
 Se un file non dovesse presentare alcuna direttiva allora si considera come una singola unità di compliazione senza appartenenza.
 
 Un workspace è un directory contenente dei file sorgenti che possono essere riuniti sotto una `lib` ma che non necessariamente debbano essere pubblicati nel registro delle librerie.
-Se la dichiarazione `lib` all'interno dei sorgenti del workspace non coincide con la dichiarazione nel file `nemesis.manifest` allora il compilatore segnalerà l'errore.
+Se la dichiarazione `lib` all'interno dei sorgenti del workspace non coincide con la dichiarazione nel file `nemesis.manifest` allora il compilatore segnalerà l'errore. Quando tutti i file sono riuniti sotto una dichiarazione `app` allora la workspace verrà trattata come un'applicazione da eseguire.
 Come è strutturata una workspace?
 
 ```
@@ -1142,7 +1143,7 @@ La root directory `workspace` contiene il workspace dell'app o libreria. La dire
 
 ```
 # dichiarazioni sul workspace attuale
-@lib
+@library
 name 'mylib'
 version '1.0.0'
 authors [ 'johndoe@gmail.com', 'tommyshelby@gmail.com' ]
@@ -1152,12 +1153,14 @@ core '2.0.1'
 math '1.3.4'
 ```
 
-e dichiara le dipendenze, e l'eventuale nome della libreria. Quando è assente la sezione `@lib`, allora il workspace è trattato come una semplice app, e non come una libreria. Il file `nemesis.lock` è invece generato a partire dal file manifest e contiene il grafo delle dipendenze con i relativi percorsi su disco e non deve essere toccato dall'utente. Potrebbe apparire come segue
+e dichiara le dipendenze, e l'eventuale nome della libreria. Quando la sezione'@application' sostituisce la sezione `@library`, allora il workspace è trattato come una semplice app, e non come una libreria. Il file `nemesis.lock` è invece generato a partire dal file manifest e contiene il grafo delle dipendenze con i relativi percorsi su disco e non deve essere toccato dall'utente. Potrebbe apparire come segue
 
 ```
+@library
+mylib:1.0.0:<builtin>:<hash>:<path>
 @dependencies
-core:2.0.1:<hash>:<path>
-math:1.3.4:<hash>:<path>
+core:2.0.1:<builtin>:<hash>:<path>
+math:1.3.4:<builtin>:<hash>:<path>
 ```
 
 e rappresenta una visita post ordine del grafo delle dipendenze che sarà utile per la compilazione insieme ai file sorgenti del workspace. Infine la compilazione dei file seguirà l'ordine del file lock e per ultimo verrà compilato il workspace.
@@ -1185,7 +1188,7 @@ println("sin(90) = {math.sin(math.pi / 2)}")
 
 Chiaramente non è possibile importare definizioni nascoste con la parola chiave `hide`.
 
-## Fare la build del mio workspace o libreria <a name="build"></a>
+## Fare la build della mia app o libreria <a name="build"></a>
 Una volta costruiti i file `nemesis.manifest` e quindi generato anche il file `nemesis.lock` è possibile fare la build dell'intero progetto con il comando
 ```
 $ nemesis build
@@ -1376,7 +1379,8 @@ multi-line-comment : <b>/*</b> multi-line-comment | any unicode value <b>*/</b>
 
 comment         : line-comment | multi-line-comment
 
-keywords        : <b>as</b>
+keywords        : <b>app</b>
+                | <b>as</b>
                 | <b>behaviour</b> 
                 | <b>break</b>
                 | <b>concept</b>

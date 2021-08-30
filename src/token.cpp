@@ -114,6 +114,7 @@ namespace nemesis {
     bool token::is_keyword() const
     {
         switch (kind_) {
+            case token::kind::app_kw:
             case token::kind::as_kw:
             case token::kind::behaviour_kw:
             case token::kind::break_kw:
@@ -131,7 +132,7 @@ namespace nemesis {
             case token::kind::in_kw:
             case token::kind::is_kw:
             case token::kind::mutable_kw:
-            case token::kind::nucleus_kw:
+            case token::kind::lib_kw:
             case token::kind::range_kw:
             case token::kind::return_kw:
             case token::kind::when_kw:
@@ -281,6 +282,7 @@ namespace nemesis {
                 case token::kind::real_literal: return "real_literal";
                 case token::kind::imag_literal: return "imag_literal";
                 case token::kind::comment: return "comment";
+                case token::kind::app_kw: return "app_kw";
                 case token::kind::as_kw: return "as_kw";
                 case token::kind::behaviour_kw: return "behaviour_kw";
                 case token::kind::break_kw: return "break_kw";
@@ -300,7 +302,7 @@ namespace nemesis {
                 case token::kind::invariant_kw: return "invariant_kw";
                 case token::kind::is_kw: return "is_kw";
                 case token::kind::mutable_kw: return "mutable_kw";
-                case token::kind::nucleus_kw: return "nucleus_kw";
+                case token::kind::lib_kw: return "lib_kw";
                 case token::kind::range_kw: return "range_kw";
                 case token::kind::return_kw: return "return_kw";
                 case token::kind::require_kw: return "require_kw";

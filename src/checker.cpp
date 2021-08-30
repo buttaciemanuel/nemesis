@@ -166,7 +166,7 @@ namespace nemesis {
             case kind::declaration:
                 return dynamic_cast<const ast::declaration*>(scope->enclosing_);
             case kind::function:
-                while (scope && !dynamic_cast<const ast::nucleus*>(scope->enclosing_)) {
+                while (scope && !dynamic_cast<const ast::workspace*>(scope->enclosing_)) {
                     if (dynamic_cast<const ast::function_declaration*>(scope->enclosing_)) return scope->enclosing_;
                     else if (dynamic_cast<const ast::property_declaration*>(scope->enclosing_)) return scope->enclosing_;
                     else if (dynamic_cast<const ast::function_expression*>(scope->enclosing_)) return scope->enclosing_;
@@ -180,7 +180,7 @@ namespace nemesis {
             case kind::global:
                 return dynamic_cast<const ast::source_unit_declaration*>(scope->enclosing_); 
             case kind::loop:
-                while (scope && !dynamic_cast<const ast::nucleus*>(scope->enclosing_)) {
+                while (scope && !dynamic_cast<const ast::workspace*>(scope->enclosing_)) {
                     if (dynamic_cast<const ast::function_declaration*>(scope->enclosing_)) return nullptr;
                     else if (dynamic_cast<const ast::property_declaration*>(scope->enclosing_)) return nullptr;
                     else if (dynamic_cast<const ast::function_expression*>(scope->enclosing_)) return nullptr;
@@ -194,7 +194,7 @@ namespace nemesis {
 
                 return nullptr;
             case kind::test:
-                while (scope && !dynamic_cast<const ast::nucleus*>(scope->enclosing_)) {
+                while (scope && !dynamic_cast<const ast::workspace*>(scope->enclosing_)) {
                     if (dynamic_cast<const ast::expression*>(scope->enclosing_)) scope = scope->parent_;
                     else if (dynamic_cast<const ast::source_unit_declaration*>(scope->enclosing_)) return nullptr;
                     else if (dynamic_cast<const ast::test_declaration*>(scope->enclosing_)) return scope->enclosing_;
@@ -202,8 +202,8 @@ namespace nemesis {
                 }
 
                 return nullptr;
-            case kind::nucleus:
-                for (; scope && !dynamic_cast<const ast::nucleus*>(scope->enclosing_); scope = scope->parent_);
+            case kind::workspace:
+                for (; scope && !dynamic_cast<const ast::workspace*>(scope->enclosing_); scope = scope->parent_);
                 return scope ? scope->enclosing_ : nullptr;
             default:
                 break;
@@ -228,8 +228,8 @@ namespace nemesis {
         // until it reaches global scope it appends the declaration block name in front
         for (; !env; env = env->parent_) {
             if (auto unit = dynamic_cast<const ast::source_unit_declaration*>(env->enclosing_)) {
-                if (auto nucleus = dynamic_cast<const ast::nucleus_declaration*>(unit->nucleus().get())) {
-                    name.insert(0, nucleus->path().lexeme().string());
+                if (auto workspace = dynamic_cast<const ast::workspace_declaration*>(unit->workspace().get())) {
+                    name.insert(0, workspace->path().lexeme().string());
                 }
             }
         }
@@ -243,14 +243,6 @@ namespace nemesis {
     }
 
     checker::scope::~scope() { instance_->end_scope(); }
-
-    checker::checker(std::unordered_map<std::string, ast::pointer<ast::nucleus>>& root, source_handler& handler, diagnostic_publisher& publisher) :
-        ast::visitor(),
-        root_(root),
-        handler_(handler),
-        publisher_(publisher),
-        scope_(nullptr) 
-    {}
         
     checker::~checker() 
     {
@@ -284,9 +276,9 @@ namespace nemesis {
     {
         switch (scope->enclosing()->kind()) {
             case ast::kind::source_unit_declaration:
-            case ast::kind::nucleus:
+            case ast::kind::workspace:
             {
-                nucleus()->globals.push_back(decl.get());
+                workspace()->globals.push_back(decl.get());
                 auto source_unit = std::static_pointer_cast<ast::source_unit_declaration>(file_->ast());
                 auto pos = std::find_if(source_unit->statements().begin(), source_unit->statements().end(), [&] (ast::pointer<ast::statement> stmt) { return stmt.get() == after; });
                 source_unit->statements().insert(++pos, decl);
@@ -304,33 +296,11 @@ namespace nemesis {
         }
     }
 
-    ast::nucleus* checker::find_nucleus_parent(const std::string& name) const
-    {
-        auto pos = name.find_last_of('.');
-
-        if (pos == std::string::npos) return nullptr;
-
-        std::string pname = name.substr(0, pos);
-        auto result = root_.find(pname);
-
-        return result != root_.end() ? result->second.get() : nullptr;
-    }
-
-    ast::nucleus* checker::nucleus_of_file(const std::string& file) const
-    {
-        for (auto nucleus : root_) {
-            auto result = nucleus.second->sources.find(file);
-            if (result != nucleus.second->sources.end()) return nucleus.second.get();
-        }
-
-        return nullptr;
-    }
-
-    ast::nucleus* checker::nucleus() const
+    ast::workspace* checker::workspace() const
     {
         for (auto scope = scope_; scope; scope = scope->parent()) {
-            if (auto n = dynamic_cast<const ast::nucleus*>(scope->enclosing())) {
-                return const_cast<ast::nucleus*>(n);
+            if (auto n = dynamic_cast<const ast::workspace*>(scope->enclosing())) {
+                return const_cast<ast::workspace*>(n);
             }
         }
 
@@ -384,11 +354,11 @@ namespace nemesis {
         }
         
         auto tname = oss.str();
-        auto nucleus = this->nucleus();
-        // first thing we check if generic type has already been instatiated inside the current nucleus
-        auto found = nucleus->instantiated.find(tname);
+        auto workspace = this->workspace();
+        // first thing we check if generic type has already been instatiated inside the current workspace
+        auto found = workspace->instantiated.find(tname);
         // we must allocate a new declaration tree for instantiated generic type
-        if (found == nucleus->instantiated.end()) {
+        if (found == workspace->instantiated.end()) {
             // push the new type declaration to instantiate on the depth stack
             level.push(&tdecl);
             // if stack depth exceed the thresholds, then the checking is aborted
@@ -404,7 +374,7 @@ namespace nemesis {
                 builder.location(level.top()->range().begin());
                 level.pop();
                 // error is printed to the programmer
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 // abort semantic analysis
                 throw abort_error();
             }
@@ -449,19 +419,19 @@ namespace nemesis {
             auto saved = scope_;
             
             scope_ = scopes_.at(clone->annotation().scope);
-            auto source_nucleus = this->nucleus();
+            auto source_workspace = this->workspace();
 
             // add instantiated type
-            nucleus->instantiated.emplace(tname, clone);
-            source_nucleus->instantiated.emplace(tname, clone);
+            workspace->instantiated.emplace(tname, clone);
+            source_workspace->instantiated.emplace(tname, clone);
 
             try { clone->accept(*this); } catch (abort_error&) { throw; }
 
             scope_ = saved;
             
-            // instantiation declaration is both added to source nucleus and to instantiantion nucleus
-            if (std::find(nucleus->types.begin(), nucleus->types.end(), clone->annotation().type) == nucleus->types.end()) nucleus->types.push_back(clone->annotation().type);
-            if (std::find(source_nucleus->types.begin(), source_nucleus->types.end(), clone->annotation().type) == source_nucleus->types.end()) source_nucleus->types.push_back(clone->annotation().type);
+            // instantiation declaration is both added to source workspace and to instantiantion workspace
+            if (std::find(workspace->types.begin(), workspace->types.end(), clone->annotation().type) == workspace->types.end()) workspace->types.push_back(clone->annotation().type);
+            if (std::find(source_workspace->types.begin(), source_workspace->types.end(), clone->annotation().type) == source_workspace->types.end()) source_workspace->types.push_back(clone->annotation().type);
             
             if (scopes_.count(&tdecl)) {
                 ast::pointers<ast::declaration> declarations;
@@ -522,7 +492,7 @@ namespace nemesis {
 
                 scope_ = saved;
 
-                nucleus->textensions.push_back(extend);
+                workspace->textensions.push_back(extend);
             }
 
             types::parametrized(clone->annotation().type, tdecl.annotation().type, arguments);
@@ -569,9 +539,9 @@ namespace nemesis {
         }
         
         auto cname = oss.str();
-        auto nucleus = this->nucleus();
+        auto workspace = this->workspace();
 
-        if (nucleus->tested_concept.count(cname)) return nucleus->tested_concept.at(cname);
+        if (workspace->tested_concept.count(cname)) return workspace->tested_concept.at(cname);
 
         // we must allocate a new declaration tree for instantiated generic concept
         // push the new concept declaration to instantiate on the depth stack
@@ -589,7 +559,7 @@ namespace nemesis {
             builder.location(level.top()->range().begin());
             level.pop();
             // error is printed to the programmer
-            publisher_.publish(builder.build());
+            publisher().publish(builder.build());
             // abort semantic analysis
             throw abort_error();
         }
@@ -674,7 +644,7 @@ namespace nemesis {
         //if (matches < clone->prototypes().size()) std::cout << "no match for this prototype (" << matches << "/" << clone->prototypes().size() << ")\n";
         //else std::cout << "focking match for this prototype (" << matches << "/" << clone->prototypes().size() << ")\n";
 
-        nucleus->tested_concept.emplace(cname, matches == clone->prototypes().size());
+        workspace->tested_concept.emplace(cname, matches == clone->prototypes().size());
 
         return matches == clone->prototypes().size();
     }
@@ -709,11 +679,11 @@ namespace nemesis {
         }
         
         auto fname = oss.str();
-        auto nucleus = this->nucleus();
-        // first thing we check if generic type has already been instatiated inside the current nucleus
-        auto found = nucleus->instantiated_functions.find(fname);
+        auto workspace = this->workspace();
+        // first thing we check if generic type has already been instatiated inside the current workspace
+        auto found = workspace->instantiated_functions.find(fname);
         // we must allocate a new declaration tree for instantiated generic type
-        if (found == nucleus->instantiated_functions.end()) {
+        if (found == workspace->instantiated_functions.end()) {
             auto clone = std::static_pointer_cast<ast::function_declaration>(fdecl.clone());
             subs.root(clone.get());
             subs.context(scopes_.at(&fdecl));
@@ -768,7 +738,7 @@ namespace nemesis {
             scope_ = saved;
 
             // adds instantiated function
-            nucleus->instantiated_functions.emplace(fname, clone);
+            workspace->instantiated_functions.emplace(fname, clone);
 
             return clone;
         }
@@ -861,7 +831,7 @@ namespace nemesis {
                     builder.note(fndecl->name().range(), diagnostic::format("Look at property `$` declaration.", fndecl->name().lexeme()));
                 }
                 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 throw semantic_error();
             }
         }
@@ -898,7 +868,7 @@ namespace nemesis {
                     builder.note(fndecl->name().range(), diagnostic::format("Look at property `$` declaration.", fndecl->name().lexeme()));
                 }
                 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 throw semantic_error();
             }
         }
@@ -906,10 +876,10 @@ namespace nemesis {
 
     void checker::add_type(ast::pointer<ast::type> type)
     {
-        auto nucleus = this->nucleus();
+        auto workspace = this->workspace();
         // if anonymous types was not found, it is added to anonymous types list
-        if (std::count_if(nucleus->types.begin(), nucleus->types.end(), [&] (ast::pointer<ast::type> x) { return types::compatible(x, type); }) == 0) {
-            nucleus->types.push_back(type);
+        if (std::count_if(workspace->types.begin(), workspace->types.end(), [&] (ast::pointer<ast::type> x) { return types::compatible(x, type); }) == 0) {
+            workspace->types.push_back(type);
         }
     }
 
@@ -924,7 +894,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
     }
 
     void checker::error(const ast::unary_expression& expr, const std::string& message, const std::string& explanation, const std::string& inlined)
@@ -938,7 +908,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
         throw semantic_error();
     }
     
@@ -954,7 +924,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
         throw semantic_error();
     }
 
@@ -970,7 +940,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
         throw semantic_error();
     }
 
@@ -984,7 +954,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
         throw semantic_error();
     }
 
@@ -999,7 +969,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
     }
     
     void checker::report(const ast::binary_expression& expr, const std::string& message, const std::string& explanation, const std::string& inlined)
@@ -1014,7 +984,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
     }
 
     void checker::report(source_range highlight, const std::string& message, const std::string& explanation, const std::string& inlined)
@@ -1027,7 +997,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
     }
 
     void checker::warning(const ast::unary_expression& expr, const std::string& message, const std::string& explanation, const std::string& inlined)
@@ -1041,7 +1011,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
     }
     
     void checker::warning(const ast::binary_expression& expr, const std::string& message, const std::string& explanation, const std::string& inlined)
@@ -1056,7 +1026,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
     }
 
     void checker::warning(source_range highlight, const std::string& message, const std::string& explanation, const std::string& inlined)
@@ -1069,7 +1039,7 @@ namespace nemesis {
                     .explanation(explanation)
                     .build();
         
-        publisher_.publish(diag);
+        publisher().publish(diag);
     }
 
     void checker::immutability(const ast::postfix_expression& expr)
@@ -1100,7 +1070,7 @@ namespace nemesis {
                 builder.note(fndecl->name().range(), diagnostic::format("Look at property `$` declaration.", fndecl->name().lexeme()));
             }
             
-            publisher_.publish(builder.build());
+            publisher().publish(builder.build());
             expr.invalid(true);
         }
     }
@@ -1133,7 +1103,7 @@ namespace nemesis {
                 builder.note(fndecl->name().range(), diagnostic::format("Look at property `$` declaration.", fndecl->name().lexeme()));
             }
             
-            publisher_.publish(builder.build());
+            publisher().publish(builder.build());
             expr.invalid(true);
         }
     }
@@ -1167,7 +1137,7 @@ namespace nemesis {
                 builder.note(fndecl->name().range(), diagnostic::format("Look at property `$` declaration.", fndecl->name().lexeme()));
             }
             
-            publisher_.publish(builder.build());
+            publisher().publish(builder.build());
             stmt.invalid(true);
         }
     }
@@ -1182,25 +1152,25 @@ namespace nemesis {
     {
         /**
          * RESOLVE(A.B...C):
-         *      se A.B... è il nome del nucleus corrente => cerca nel nucleus corrent
-         *      se A.B... è il nome di uno dei nucleus importati => cerca dentro uno dei nucleus importati
+         *      se A.B... è il nome del workspace corrente => cerca nel workspace corrent
+         *      se A.B... è il nome di uno dei workspace importati => cerca dentro uno dei workspace importati
          *      altrimenti cerca a partire dallo scope attuale
          */
         size_t pos = 0;
         environment* scope = nullptr;
         const ast::declaration* result = nullptr;
-        ast::nucleus* nucleus = this->nucleus();
+        ast::workspace* workspace = this->workspace();
         std::string name = ast::path_to_string(path);
-        int local = path_contains_subpath(name, nucleus->name);
+        int local = path_contains_subpath(name, workspace->name);
 
         if (local > 0) {
-            scope = scopes_.at(nucleus);
+            scope = scopes_.at(workspace);
             pos = local;
         }
-        else if (!nucleus->imports.empty()) {
-            for (auto imported : nucleus->imports) {
-                // if imported nucleus is a subpath of path, then the name is used from imported nucleus
-                // it looks for the longest match of subpath (nucleus) inside path
+        else if (!workspace->imports.empty()) {
+            for (auto imported : workspace->imports) {
+                // if imported workspace is a subpath of path, then the name is used from imported workspace
+                // it looks for the longest match of subpath (workspace) inside path
                 size_t positions = path_contains_subpath(name, imported.first);
                 if (positions > pos) {
                     scope = scopes_.at(imported.second);
@@ -1229,14 +1199,14 @@ namespace nemesis {
     {
         /**
          * RESOLVE(A.B...C):
-         *      se A.B... è il nome del nucleus corrente => cerca nel nucleus corrent
-         *      se A.B... è il nome di uno dei nucleus importati => cerca dentro uno dei nucleus importati
+         *      se A.B... è il nome del workspace corrente => cerca nel workspace corrent
+         *      se A.B... è il nome di uno dei workspace importati => cerca dentro uno dei workspace importati
          *      altrimenti cerca a partire dallo scope attuale prima le variabili, poi funzioni, poi tipi
          */
         size_t pos = 0;
         const environment* scope = context ? context : scope_;
         const ast::declaration* result = nullptr;
-        ast::nucleus* nucleus = this->nucleus();
+        ast::workspace* workspace = this->workspace();
         std::string name = ast::path_to_string(path);
         
         // first attempt is from current scope or passed context
@@ -1251,16 +1221,16 @@ namespace nemesis {
         }
         
         // otherwise lookup is made globally
-        int local = path_contains_subpath(name, nucleus->name);
+        int local = path_contains_subpath(name, workspace->name);
 
         if (local > 0) {
-            scope = scopes_.at(nucleus);
+            scope = scopes_.at(workspace);
             pos = local;
         }
-        else if (!nucleus->imports.empty()) {
-            for (auto imported : nucleus->imports) {
-                // if imported nucleus is a subpath of path, then the name is used from imported nucleus
-                // it looks for the longest match of subpath (nucleus) inside path
+        else if (!workspace->imports.empty()) {
+            for (auto imported : workspace->imports) {
+                // if imported workspace is a subpath of path, then the name is used from imported workspace
+                // it looks for the longest match of subpath (workspace) inside path
                 size_t positions = path_contains_subpath(name, imported.first);
                 if (positions > pos) {
                     scope = scopes_.at(imported.second);
@@ -1286,14 +1256,14 @@ namespace nemesis {
     {
         /**
          * RESOLVE(A.B...C):
-         *      se A.B... è il nome del nucleus corrente => cerca nel nucleus corrent
-         *      se A.B... è il nome di uno dei nucleus importati => cerca dentro uno dei nucleus importati
+         *      se A.B... è il nome del workspace corrente => cerca nel workspace corrent
+         *      se A.B... è il nome di uno dei workspace importati => cerca dentro uno dei workspace importati
          *      altrimenti cerca a partire dallo scope attuale prima le variabili, poi funzioni, poi tipi
          */
         size_t pos = 0;
         const environment* scope = context ? context : scope_;
         const ast::declaration* result = nullptr;
-        ast::nucleus* nucleus = this->nucleus();
+        ast::workspace* workspace = this->workspace();
         std::string name = ast::path_to_string(path);
         
         // first attempt is from current scope or passed context
@@ -1310,16 +1280,16 @@ namespace nemesis {
         }
         
         // otherwise lookup is made globally
-        int local = path_contains_subpath(name, nucleus->name);
+        int local = path_contains_subpath(name, workspace->name);
 
         if (local > 0) {
-            scope = scopes_.at(nucleus);
+            scope = scopes_.at(workspace);
             pos = local;
         }
-        else if (!nucleus->imports.empty()) {
-            for (auto imported : nucleus->imports) {
-                // if imported nucleus is a subpath of path, then the name is used from imported nucleus
-                // it looks for the longest match of subpath (nucleus) inside path
+        else if (!workspace->imports.empty()) {
+            for (auto imported : workspace->imports) {
+                // if imported workspace is a subpath of path, then the name is used from imported workspace
+                // it looks for the longest match of subpath (workspace) inside path
                 size_t positions = path_contains_subpath(name, imported.first);
                 if (positions > pos) {
                     scope = scopes_.at(imported.second);
@@ -1343,6 +1313,71 @@ namespace nemesis {
         return result;
     }
 
+    std::string checker::fullname(const ast::declaration *decl) const
+    {
+        std::stack<std::string> levels;
+        
+        for (bool done = false; decl && !done;) {
+            switch (decl->kind()) {
+                case ast::kind::workspace:
+                    // in current workspace name is omitted, otherwise it's chained
+                    if (decl != workspace()) levels.push(static_cast<const ast::workspace*>(decl)->name);
+                    done = true;
+                    break;
+                case ast::kind::function_declaration:
+                    // function name scope is added only if it is the function full name to be resolved
+                    if (!levels.empty()) done = true;
+                    else levels.push(static_cast<const ast::function_declaration*>(decl)->name().lexeme().string());
+                    break;
+                case ast::kind::property_declaration:
+                    // property name scope is added only if it is the property full name to be resolved
+                    if (!levels.empty()) done = true;
+                    else levels.push(static_cast<const ast::property_declaration*>(decl)->name().lexeme().string());
+                    break;
+                case ast::kind::behaviour_declaration:
+                case ast::kind::record_declaration:
+                case ast::kind::range_declaration:
+                case ast::kind::variant_declaration:
+                case ast::kind::alias_declaration:
+                    levels.push(static_cast<const ast::type_declaration*>(decl)->name().lexeme().string());
+                    break;
+                case ast::kind::var_declaration:
+                    levels.push(static_cast<const ast::var_declaration*>(decl)->name().lexeme().string());
+                    break;
+                case ast::kind::const_declaration:
+                    levels.push(static_cast<const ast::var_declaration*>(decl)->name().lexeme().string());
+                    break;
+                case ast::kind::field_declaration:
+                    levels.push(static_cast<const ast::field_declaration*>(decl)->name().lexeme().string());
+                    done = true;
+                    break;
+                case ast::kind::tuple_field_declaration:
+                    levels.push(std::to_string(static_cast<const ast::tuple_field_declaration*>(decl)->index()));
+                    done = true;
+                    break;
+                case ast::kind::parameter_declaration:
+                    levels.push(static_cast<const ast::parameter_declaration*>(decl)->name().lexeme().string());
+                    break;
+                default:
+                    break;
+            }
+
+            if (auto newscope = dynamic_cast<const ast::declaration*>(decl->annotation().scope)) decl = newscope;
+            else done = true;
+        }
+
+        std::ostringstream result;
+
+        if (!levels.empty()) {
+            result << levels.top();
+            levels.pop();
+
+            for (; !levels.empty(); levels.pop()) result << "." << levels.top();
+        }
+
+        return result.str();
+    }
+
     namespace impl {
         extern std::unordered_map<std::string, ast::pointer<ast::type>> builtins;
     }
@@ -1360,7 +1395,22 @@ namespace nemesis {
         for (const environment* into = scope; into; into = into->parent()) {
             for (auto pair : into->types()) {
                 if (utils::levenshtein_distance(name, pair.first) < 3) {
-                    result.emplace(pair.second->name().lexeme().string(), pair.second);
+                    result.emplace(fullname(pair.second), pair.second);
+                }
+            }
+            for (auto pair : into->concepts()) {
+                if (utils::levenshtein_distance(name, pair.first) < 3) {
+                    result.emplace(fullname(pair.second), pair.second);
+                }
+            }
+            for (auto pair : into->functions()) {
+                if (utils::levenshtein_distance(name, pair.first) < 3) {
+                    result.emplace(fullname(pair.second), pair.second);
+                }
+            }
+            for (auto pair : into->values()) {
+                if (utils::levenshtein_distance(name, pair.first) < 3) {
+                    result.emplace(fullname(pair.second), pair.second);
                 }
             }
         }
@@ -1371,10 +1421,10 @@ namespace nemesis {
     void checker::do_imports()
     {
         // cycle dependency search
-        using edge = std::pair<ast::nucleus*, ast::nucleus*>;
+        using edge = std::pair<ast::workspace*, ast::workspace*>;
         std::map<edge, ast::use_declaration*> edges;
-        std::unordered_map<ast::nucleus*, bool> visited, resolved;
-        std::function<void(ast::nucleus* node)> dfs = [&](ast::nucleus* node) {
+        std::unordered_map<ast::workspace*, bool> visited, resolved;
+        std::function<void(ast::workspace* node)> dfs = [&](ast::workspace* node) {
             visited.at(node) = true;
 
             for (auto source : node->sources) {
@@ -1382,26 +1432,26 @@ namespace nemesis {
                 for (auto stmt : ast->imports()) {
                     auto import = std::dynamic_pointer_cast<ast::use_declaration>(stmt);
                     auto name = import->path().lexeme().string();
-                    auto result = root_.find(name);
-                    // the nucleus was not found by name
-                    if (result == root_.end()) {
-                        report(import->path().range(), diagnostic::format("I can't find nucleus `$` dammit, are you sure you have declared it?", name));
+                    auto result = compilation_.workspaces().find(name);
+                    // the workspace was not found by name
+                    if (result == compilation_.workspaces().end()) {
+                        report(import->path().range(), diagnostic::format("I can't find workspace `$` dammit, are you sure you have declared it?", name));
                     }
                     // this is a noose in graph theory which is a cycle around the same vertex
                     else if (result->second.get() == node) {
-                        report(import->path().range(), diagnostic::format("You cannot import nucleus `$` inside itself, idiot.", name));
+                        report(import->path().range(), diagnostic::format("You cannot import workspace `$` inside itself, idiot.", name));
                     }
                     // not yet resolved
                     else if (!resolved.at(result->second.get())) {
                         // if already visited but not yet resolved then there is a cyle (backward arrow inside dfs tree)
                         if (visited.at(result->second.get())) {
-                            report(import->path().range(), diagnostic::format("Importing nucleus `$` creates a damn cyclic dependency, dammit!", name));
+                            report(import->path().range(), diagnostic::format("Importing workspace `$` creates a damn cyclic dependency, dammit!", name));
                         }
                         // if never seen, then we visit recursively and then make the import
                         else {
                             // its dependency are traversed recursively
                             dfs(result->second.get());
-                            // import is performed at nucleus level
+                            // import is performed at workspace level
                             node->imports.emplace(result->first, result->second.get());
                             edges.emplace(std::make_pair(node, result->second.get()), import.get());
                         }
@@ -1411,14 +1461,14 @@ namespace nemesis {
                         auto diag = diagnostic::builder()
                                     .severity(diagnostic::severity::warning)
                                     .location(import->path().location())
-                                    .message(diagnostic::format("You have already imported nucleus `$` inside nucleus `$`, idiot.", name, node->name))
+                                    .message(diagnostic::format("You have already imported workspace `$` inside workspace `$`, idiot.", name, node->name))
                                     .highlight(import->path().range(), "redundant")
                                     .note(edges.at(std::make_pair(node, result->second.get()))->path().range(), "This is the first declaration of usage in case you forgot.")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
-                    // already resolved, so all its dependecy were resolved either, and the import is performed at nucleus level
+                    // already resolved, so all its dependecy were resolved either, and the import is performed at workspace level
                     else {
                         node->imports.emplace(result->first, result->second.get());
                         edges.emplace(std::make_pair(node, result->second.get()), import.get());
@@ -1429,44 +1479,54 @@ namespace nemesis {
             resolved.at(node) = true;
         };
 
-        for (auto pair : root_) {
+        for (auto pair : compilation_.workspaces()) {
             visited.emplace(pair.second.get(), false);
             resolved.emplace(pair.second.get(), false);
         }
 
-        for (auto nucleus : root_) {
-            if (!visited.at(nucleus.second.get())) dfs(nucleus.second.get());
+        for (auto workspace : compilation_.workspaces()) {
+            if (!visited.at(workspace.second.get())) dfs(workspace.second.get());
         }
     }
 
-    void checker::import_builtin_symbols()
+    void checker::import_core_library_in_workspaces()
     {
-        if (!root_.count("nscore")) return;
-
-        for (auto symbol : scopes_.at(root_.at("nscore").get())->types()) {
-            for (auto other : root_) {
-                if (other.first == "nscore") continue;
+        // if core library is excluded by default at higher level, then this pass is skipped
+        if (compilation_.packages().count("core") == 0 || compilation_.workspaces().count("core") == 0) return;
+        // core workspace
+        auto core = compilation_.workspaces().at("core").get();
+        // imports all symbols from `core` library inside other workspaces to be referenced without `.` notation
+        // for example `core.println` could be written equally as `println`
+        // for each workspace, `core` library workspace is added as implicit import library
+        for (auto other : compilation_.workspaces()) {
+            if (other.first == "core") continue;
+            other.second->imports["core"] = core;
+        }
+        // imports types
+        for (auto symbol : scopes_.at(core)->types()) {
+            for (auto other : compilation_.workspaces()) {
+                if (other.first == "core") continue;
                 scopes_.at(other.second.get())->type(symbol.first, symbol.second);
             }
         }
-
-        for (auto symbol : scopes_.at(root_.at("nscore").get())->values()) {
-            for (auto other : root_) {
-                if (other.first == "nscore") continue;
+        // imports global constants and variables
+        for (auto symbol : scopes_.at(core)->values()) {
+            for (auto other : compilation_.workspaces()) {
+                if (other.first == "core") continue;
                 scopes_.at(other.second.get())->value(symbol.first, symbol.second);
             }
         }
-
-        for (auto symbol : scopes_.at(root_.at("nscore").get())->concepts()) {
-            for (auto other : root_) {
-                if (other.first == "nscore") continue;
+        // imports concepts
+        for (auto symbol : scopes_.at(core)->concepts()) {
+            for (auto other : compilation_.workspaces()) {
+                if (other.first == "core") continue;
                 scopes_.at(other.second.get())->concept(symbol.first, symbol.second);
             }
         }
-
-        for (auto symbol : scopes_.at(root_.at("nscore").get())->functions()) {
-            for (auto other : root_) {
-                if (other.first == "nscore") continue;
+        // imports functions
+        for (auto symbol : scopes_.at(core)->functions()) {
+            for (auto other : compilation_.workspaces()) {
+                if (other.first == "core") continue;
                 scopes_.at(other.second.get())->function(symbol.first, symbol.second);
             }
         }
@@ -1541,7 +1601,7 @@ namespace nemesis {
         }
 
         expr.annotation().type = types::tuple(components);
-        // adds anonymous aggregated type to the nucleus
+        // adds anonymous aggregated type to the workspace
         add_type(expr.annotation().type);
     }
     
@@ -1595,7 +1655,7 @@ namespace nemesis {
         }
 
         expr.annotation().type = types::variant(types);
-        // adds anonymous aggregated type to the nucleus
+        // adds anonymous aggregated type to the workspace
         add_type(expr.annotation().type);
     }
 
@@ -1612,7 +1672,7 @@ namespace nemesis {
         }
 
         expr.annotation().type = types::record(fields);
-        // adds anonymous aggregated type to the nucleus
+        // adds anonymous aggregated type to the workspace
         add_type(expr.annotation().type);
     }
     
@@ -1759,7 +1819,7 @@ namespace nemesis {
                                     .note(var->name().range(), diagnostic::format("This is `$` declaration from local scope.", name))
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         expr.invalid(true);
                     }
                 }
@@ -1773,7 +1833,7 @@ namespace nemesis {
                         scope_ = saved;
                     }
                     catch (cyclic_symbol_error& err) {
-                        publisher_.publish(err.diagnostic());
+                        publisher().publish(err.diagnostic());
                         vardecl->annotation().resolved = true;
                         scope_ = saved;
                     }
@@ -1809,7 +1869,7 @@ namespace nemesis {
                         scope_ = saved;
                     }
                     catch (cyclic_symbol_error& err) {
-                        publisher_.publish(err.diagnostic());
+                        publisher().publish(err.diagnostic());
                         typedecl->annotation().resolved = true;
                         scope_ = saved;
                     }
@@ -1826,7 +1886,7 @@ namespace nemesis {
 
                 if (expr.annotation().substitution) expr.annotation().type = expr.annotation().type->substitute(expr.annotation().type, expr.annotation().substitution->map);
 
-                if (typedecl->is_hidden() && scopes_.at(typedecl)->outscope(environment::kind::nucleus) != nucleus()) {
+                if (typedecl->is_hidden() && scopes_.at(typedecl)->outscope(environment::kind::workspace) != workspace()) {
                     auto diag = diagnostic::builder()
                                 .severity(diagnostic::severity::error)
                                 .location(expr.range().begin())
@@ -1835,7 +1895,7 @@ namespace nemesis {
                                 .note(typedecl->name().range(), diagnostic::format("As you can see type `$` was declared with `hide` specifier.", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     throw semantic_error();
                 }
 
@@ -1851,7 +1911,7 @@ namespace nemesis {
                                     .note(typedecl->name().range(), diagnostic::format("As you can see type `$` was declared without generic parameters.", name))
                                     .build();
                             
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         mistake = true;
                     }
                     else {
@@ -1870,7 +1930,7 @@ namespace nemesis {
                                         .note(typedecl->name().range(), diagnostic::format("As you can see type `$` was declared with exactly `$` generic parameters.", name, expected->parameters().size()))
                                         .build();
                             
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             mistake = true;
                         }
                         else for (size_t i = 0; i < expected->parameters().size(); ++i)
@@ -1891,7 +1951,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
@@ -1903,7 +1963,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else {
@@ -1923,7 +1983,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                 }
@@ -1939,7 +1999,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else {
@@ -1962,7 +2022,7 @@ namespace nemesis {
                                             .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
                                             .build();
                             
-                                    publisher_.publish(diag);
+                                    publisher().publish(diag);
                                     mistake = true;
                                 }
                                 else {
@@ -2001,7 +2061,7 @@ namespace nemesis {
                                     if (auto constraint = std::static_pointer_cast<ast::generic_clause_declaration>(typedecl->generic())->constraint()) builder.highlight(constraint->range(), diagnostic::highlighter::mode::light);
                                 }
 
-                                publisher_.publish(builder.build());
+                                publisher().publish(builder.build());
                                 expr.annotation().type = types::unknown();
                                 expr.invalid(true);
                                 throw semantic_error();
@@ -2021,7 +2081,7 @@ namespace nemesis {
                                 .note(typedecl->name().range(), diagnostic::format("Look at type `$` declaration.", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     mistake = true;
                 }
 
@@ -2042,7 +2102,7 @@ namespace nemesis {
                         scope_ = saved;
                     }
                     catch (cyclic_symbol_error& err) {
-                        publisher_.publish(err.diagnostic());
+                        publisher().publish(err.diagnostic());
                         fn->annotation().resolved = true;
                         scope_ = saved;
                     }
@@ -2055,7 +2115,7 @@ namespace nemesis {
                 if (auto fndecl = dynamic_cast<const ast::function_declaration*>(fn)) expr.annotation().type = fndecl->annotation().type;
                 else if (auto prdecl = dynamic_cast<const ast::property_declaration*>(fn)) expr.annotation().type = prdecl->annotation().type;
 
-                if (fn->is_hidden() && scopes_.at(fn)->outscope(environment::kind::nucleus) != nucleus()) {
+                if (fn->is_hidden() && scopes_.at(fn)->outscope(environment::kind::workspace) != workspace()) {
                     auto diag = diagnostic::builder()
                                 .severity(diagnostic::severity::error)
                                 .location(expr.range().begin())
@@ -2064,7 +2124,7 @@ namespace nemesis {
                                 .note(fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->name().range() : static_cast<const ast::property_declaration*>(fn)->name().range(), diagnostic::format("As you can see $ `$` was declared with `hide` specifier.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     throw semantic_error();
                 }
 
@@ -2083,7 +2143,7 @@ namespace nemesis {
                                 .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     mistake = true;
                 }
                 else if (fn->kind() == ast::kind::function_declaration && static_cast<const ast::function_declaration*>(fn)->generic()) {
@@ -2098,7 +2158,7 @@ namespace nemesis {
                                     .note(name.range(), diagnostic::format("As you can see $ `$` was declared with exactly `$` generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme(), expected->parameters().size()))
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         mistake = true;
                     }
                     else for (size_t i = 0; i < expr.generics().size(); ++i)
@@ -2119,7 +2179,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else if (!types::compatible(constant->annotation().type, newexpr->annotation().type)) {
@@ -2131,7 +2191,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else {
@@ -2150,7 +2210,7 @@ namespace nemesis {
                                         .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                         .build();
                         
-                                    publisher_.publish(diag);
+                                    publisher().publish(diag);
                                     mistake = true;
                                 }
                             }
@@ -2166,7 +2226,7 @@ namespace nemesis {
                                         .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                         .build();
                         
-                                    publisher_.publish(diag);
+                                    publisher().publish(diag);
                                     mistake = true;
                                 }
                                 else {
@@ -2188,7 +2248,7 @@ namespace nemesis {
                                         .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
                                         .build();
                         
-                                publisher_.publish(diag);
+                                publisher().publish(diag);
                                 mistake = true;
                             }
                             else {
@@ -2214,7 +2274,7 @@ namespace nemesis {
                         scope_ = saved;
                     }
                     catch (cyclic_symbol_error& err) {
-                        publisher_.publish(err.diagnostic());
+                        publisher().publish(err.diagnostic());
                         ct->annotation().resolved = true;
                         scope_ = saved;
                     }
@@ -2230,7 +2290,7 @@ namespace nemesis {
                 expr.annotation().referencing = ct;
                 ++ct->annotation().usecount;
 
-                if (ct->is_hidden() && scopes_.at(ct)->outscope(environment::kind::nucleus) != nucleus()) {
+                if (ct->is_hidden() && scopes_.at(ct)->outscope(environment::kind::workspace) != workspace()) {
                     auto diag = diagnostic::builder()
                                 .severity(diagnostic::severity::error)
                                 .location(expr.range().begin())
@@ -2239,7 +2299,7 @@ namespace nemesis {
                                 .note(ct->name().range(), diagnostic::format("As you can see concept `$` was declared with `hide` specifier.", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     throw semantic_error();
                 }
 
@@ -2255,7 +2315,7 @@ namespace nemesis {
                                     .note(ct->name().range(), diagnostic::format("As you can see concept `$` was declared without generic parameters.", name))
                                     .build();
                             
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         mistake = true;
                     }
                     else {
@@ -2274,7 +2334,7 @@ namespace nemesis {
                                         .note(ct->name().range(), diagnostic::format("As you can see concept `$` was declared with exactly `$` generic parameters.", name, expected->parameters().size()))
                                         .build();
                             
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             mistake = true;
                         }
                         else for (size_t i = 0; i < expected->parameters().size(); ++i)
@@ -2295,7 +2355,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
@@ -2307,7 +2367,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else {
@@ -2327,7 +2387,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                 }
@@ -2343,7 +2403,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else {
@@ -2366,7 +2426,7 @@ namespace nemesis {
                                             .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
                                             .build();
                             
-                                    publisher_.publish(diag);
+                                    publisher().publish(diag);
                                     mistake = true;
                                 }
                                 else {
@@ -2395,7 +2455,7 @@ namespace nemesis {
                                 .note(ct->name().range(), diagnostic::format("Look at concept `$` declaration.", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     mistake = true;
                 }
 
@@ -2419,10 +2479,21 @@ namespace nemesis {
         else {
             expr.annotation().type = types::unknown();
 
-            auto it = root_.find(expr.identifier().lexeme().string());
+            // checks if name references a workspace
+            auto it = compilation_.workspaces().find(expr.identifier().lexeme().string());
 
-            if (it != root_.end()) {
-                if (expr.generics().size()) error(expr.range(), diagnostic::format("You cannot use generic arguments with nucleus name `$`, c*nt!", it->first));
+            if (it != compilation_.workspaces().end()) {
+                if (expr.generics().size()) error(expr.range(), diagnostic::format("You cannot use generic arguments with workspace name `$`, c*nt!", it->first));
+                // current workspace
+                auto current = workspace();
+                // checks if workspace is imported inside this unit, note that
+                // `use` directive is purely formal and declarative (even though necessary for readability and expressiveness)
+                if (it->first != current->name && current->imports.count(it->first) == 0) {
+                    expr.annotation().type = types::unknown();
+                    expr.invalid(true);
+                    error(expr.identifier().range(), diagnostic::format("If you wanna use workspace `$`, then you must import it, idiot! \\ I suggest writing `use $` inside this workspace.", it->first, it->first), "", "not imported");
+                }
+                // correct, then name reference is annotated
                 expr.annotation().istype = true;
                 expr.annotation().type = it->second->type;
                 expr.annotation().referencing = it->second.get();
@@ -2448,7 +2519,7 @@ namespace nemesis {
                                     .note(var->name().range(), diagnostic::format("This is `$` declaration from local scope.", name))
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         expr.invalid(true);
                     }
                 }
@@ -2462,7 +2533,7 @@ namespace nemesis {
                         scope_ = saved;
                     }
                     catch (cyclic_symbol_error& err) {
-                        publisher_.publish(err.diagnostic());
+                        publisher().publish(err.diagnostic());
                         vardecl->annotation().resolved = true;
                         scope_ = saved;
                     }
@@ -2504,7 +2575,7 @@ namespace nemesis {
                         scope_ = saved;
                     }
                     catch (cyclic_symbol_error& err) {
-                        publisher_.publish(err.diagnostic());
+                        publisher().publish(err.diagnostic());
                         typedecl->annotation().resolved = true;
                         scope_ = saved;
                     }
@@ -2519,7 +2590,7 @@ namespace nemesis {
                 expr.annotation().referencing = typedecl;
                 ++typedecl->annotation().usecount;
 
-                if (typedecl->is_hidden() && scopes_.at(typedecl)->outscope(environment::kind::nucleus) != nucleus()) {
+                if (typedecl->is_hidden() && scopes_.at(typedecl)->outscope(environment::kind::workspace) != workspace()) {
                     auto diag = diagnostic::builder()
                                 .severity(diagnostic::severity::error)
                                 .location(expr.range().begin())
@@ -2528,7 +2599,7 @@ namespace nemesis {
                                 .note(typedecl->name().range(), diagnostic::format("As you can see type `$` was declared with `hide` specifier.", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     throw semantic_error();
                 }
 
@@ -2544,7 +2615,7 @@ namespace nemesis {
                                     .note(typedecl->name().range(), diagnostic::format("As you can see type `$` was declared without generic parameters.", name))
                                     .build();
                             
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         mistake = true;
                     }
                     else {
@@ -2563,7 +2634,7 @@ namespace nemesis {
                                         .note(typedecl->name().range(), diagnostic::format("As you can see type `$` was declared with exactly `$` generic parameters.", name, expected->parameters().size()))
                                         .build();
                             
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             mistake = true;
                         }
                         else for (size_t i = 0; i < expected->parameters().size(); ++i)
@@ -2584,7 +2655,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
@@ -2596,7 +2667,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else {
@@ -2616,7 +2687,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                 }
@@ -2632,7 +2703,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else {
@@ -2655,7 +2726,7 @@ namespace nemesis {
                                             .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
                                             .build();
                             
-                                    publisher_.publish(diag);
+                                    publisher().publish(diag);
                                     mistake = true;
                                 }
                                 else {
@@ -2694,7 +2765,7 @@ namespace nemesis {
                                     if (auto constraint = std::static_pointer_cast<ast::generic_clause_declaration>(typedecl->generic())->constraint()) builder.highlight(constraint->range(), diagnostic::highlighter::mode::light);
                                 }
 
-                                publisher_.publish(builder.build());
+                                publisher().publish(builder.build());
                                 expr.annotation().type = types::unknown();
                                 expr.invalid(true);
                                 throw semantic_error();
@@ -2740,7 +2811,7 @@ namespace nemesis {
                                 .note(typedecl->name().range(), diagnostic::format("Look at type `$` declaration.", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     mistake = true;
                 }
 
@@ -2761,7 +2832,7 @@ namespace nemesis {
                         scope_ = saved;
                     }
                     catch (cyclic_symbol_error& err) {
-                        publisher_.publish(err.diagnostic());
+                        publisher().publish(err.diagnostic());
                         fn->annotation().resolved = true;
                         scope_ = saved;
                     }
@@ -2774,7 +2845,7 @@ namespace nemesis {
                 if (auto fndecl = dynamic_cast<const ast::function_declaration*>(fn)) expr.annotation().type = fndecl->annotation().type;
                 else if (auto prdecl = dynamic_cast<const ast::property_declaration*>(fn)) expr.annotation().type = prdecl->annotation().type;
 
-                if (fn->is_hidden() && scopes_.at(fn)->outscope(environment::kind::nucleus) != nucleus()) {
+                if (fn->is_hidden() && scopes_.at(fn)->outscope(environment::kind::workspace) != workspace()) {
                     auto diag = diagnostic::builder()
                                 .severity(diagnostic::severity::error)
                                 .location(expr.range().begin())
@@ -2783,7 +2854,7 @@ namespace nemesis {
                                 .note(fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->name().range() : static_cast<const ast::property_declaration*>(fn)->name().range(), diagnostic::format("As you can see $ `$` was declared with `hide` specifier.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     throw semantic_error();
                 }
                 
@@ -2802,7 +2873,7 @@ namespace nemesis {
                                 .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     mistake = true;
                 }
                 else if (fn->kind() == ast::kind::function_declaration && static_cast<const ast::function_declaration*>(fn)->generic()) {
@@ -2817,7 +2888,7 @@ namespace nemesis {
                                     .note(name.range(), diagnostic::format("As you can see $ `$` was declared with exactly `$` generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme(), expected->parameters().size()))
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         mistake = true;
                     }
                     else for (size_t i = 0; i < expr.generics().size(); ++i)
@@ -2838,7 +2909,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else if (!types::compatible(constant->annotation().type, newexpr->annotation().type)) {
@@ -2850,7 +2921,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else {
@@ -2869,7 +2940,7 @@ namespace nemesis {
                                         .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                         .build();
                         
-                                    publisher_.publish(diag);
+                                    publisher().publish(diag);
                                     mistake = true;
                                 }
                             }
@@ -2885,7 +2956,7 @@ namespace nemesis {
                                         .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                         .build();
                         
-                                    publisher_.publish(diag);
+                                    publisher().publish(diag);
                                     mistake = true;
                                 }
                                 else {
@@ -2907,7 +2978,7 @@ namespace nemesis {
                                         .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
                                         .build();
                         
-                                publisher_.publish(diag);
+                                publisher().publish(diag);
                                 mistake = true;
                             }
                             else {
@@ -2947,7 +3018,7 @@ namespace nemesis {
                         scope_ = saved;
                     }
                     catch (cyclic_symbol_error& err) {
-                        publisher_.publish(err.diagnostic());
+                        publisher().publish(err.diagnostic());
                         ct->annotation().resolved = true;
                         scope_ = saved;
                     }
@@ -2963,7 +3034,7 @@ namespace nemesis {
                 expr.annotation().referencing = ct;
                 ++ct->annotation().usecount;
 
-                if (ct->is_hidden() && scopes_.at(ct)->outscope(environment::kind::nucleus) != nucleus()) {
+                if (ct->is_hidden() && scopes_.at(ct)->outscope(environment::kind::workspace) != workspace()) {
                     auto diag = diagnostic::builder()
                                 .severity(diagnostic::severity::error)
                                 .location(expr.range().begin())
@@ -2972,7 +3043,7 @@ namespace nemesis {
                                 .note(ct->name().range(), diagnostic::format("As you can see concept `$` was declared with `hide` specifier.", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     throw semantic_error();
                 }
 
@@ -2988,7 +3059,7 @@ namespace nemesis {
                                     .note(ct->name().range(), diagnostic::format("As you can see concept `$` was declared without generic parameters.", name))
                                     .build();
                             
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         mistake = true;
                     }
                     else {
@@ -3007,7 +3078,7 @@ namespace nemesis {
                                         .note(ct->name().range(), diagnostic::format("As you can see concept `$` was declared with exactly `$` generic parameters.", name, expected->parameters().size()))
                                         .build();
                             
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             mistake = true;
                         }
                         else for (size_t i = 0; i < expected->parameters().size(); ++i)
@@ -3028,7 +3099,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
@@ -3040,7 +3111,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else {
@@ -3060,7 +3131,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                 }
@@ -3076,7 +3147,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else {
@@ -3099,7 +3170,7 @@ namespace nemesis {
                                             .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
                                             .build();
                             
-                                    publisher_.publish(diag);
+                                    publisher().publish(diag);
                                     mistake = true;
                                 }
                                 else {
@@ -3128,7 +3199,7 @@ namespace nemesis {
                                 .note(ct->name().range(), diagnostic::format("Look at concept `$` declaration.", name))
                                 .build();
                         
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     mistake = true;
                 }
 
@@ -3198,7 +3269,7 @@ namespace nemesis {
                                 .note(expr.elements().front()->range(), diagnostic::format("You idiot make me think that element type should be `$` from here.", base->string()))
                                 .build();
                     
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     expr.invalid(true);
                 }
                 else if (auto implicit = implicit_cast(base, expr.elements().at(i))) {
@@ -3281,15 +3352,15 @@ namespace nemesis {
             if (auto tdecl = std::dynamic_pointer_cast<ast::type_declaration>(stmt)) {
                 std::string name = tdecl->name().lexeme().string();
                 auto other = scope_->type(name);
-                if (nucleus() && nucleus()->name == name) {
+                if (workspace()->name == name) {
                     auto diag = diagnostic::builder()
                                 .location(tdecl->name().location())
                                 .severity(diagnostic::severity::error)
-                                .message(diagnostic::format("This type name conflicts with nucleus name `$`, c*nt!", name))
+                                .message(diagnostic::format("This type name conflicts with workspace name `$`, c*nt!", name))
                                 .highlight(tdecl->name().range(), "conflicting")
                                 .build();
                     
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                 }
                 else if (types::builtin(name)) {
                     tdecl->annotation().type = types::unknown();
@@ -3305,7 +3376,7 @@ namespace nemesis {
                                 .note(other->name().range(), "Here's the homonymous declaration, you f*cker!")
                                 .build();
                     
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                 }
                 else {
                     scope_->type(name, tdecl.get());
@@ -3314,15 +3385,15 @@ namespace nemesis {
             else if (auto cdecl = std::dynamic_pointer_cast<ast::const_declaration>(stmt)) {
                     std::string name = cdecl->name().lexeme().string();
                     auto other = scope_->value(name);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(cdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This constant name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This constant name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(cdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         cdecl->annotation().type = types::unknown();
@@ -3354,7 +3425,7 @@ namespace nemesis {
                                 .note(underline->range(), "Here's the homonymous declaration, you f*cker!");
                         }
                         
-                        publisher_.publish(builder.build());
+                        publisher().publish(builder.build());
                     }
                     else {
                         scope_->value(name, cdecl.get());
@@ -3367,15 +3438,15 @@ namespace nemesis {
                     // variable declaration is marked as erraneous by default
                     cdecl->invalid(true);
                     
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(id.location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This constant name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This constant name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(id.range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         cdecl->annotation().type = types::unknown();
@@ -3407,7 +3478,7 @@ namespace nemesis {
                                 .note(underline->range(), "Here's the homonymous declaration, you f*cker!");
                         }
                         
-                        publisher_.publish(builder.build());
+                        publisher().publish(builder.build());
                     }
                     else {
                         // the only case in which our variable will be analyzed because there are not conflicts
@@ -3422,15 +3493,15 @@ namespace nemesis {
                 // variable declaration is marked as erraneous by default
                 vdecl->invalid(true);
                 
-                if (nucleus() && nucleus()->name == name) {
+                if (workspace()->name == name) {
                     auto diag = diagnostic::builder()
                                 .location(vdecl->name().location())
                                 .severity(diagnostic::severity::error)
-                                .message(diagnostic::format("This variable name conflicts with nucleus name `$`, c*nt!", name))
+                                .message(diagnostic::format("This variable name conflicts with workspace name `$`, c*nt!", name))
                                 .highlight(vdecl->name().range(), "conflicting")
                                 .build();
                     
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                 }
                 else if (types::builtin(name)) {
                     vdecl->annotation().type = types::unknown();
@@ -3462,7 +3533,7 @@ namespace nemesis {
                             .note(underline->range(), "Here's the homonymous declaration, you f*cker!");
                     }
                     
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                 }
                 else {
                     // the only case in which our variable will be analyzed because there are not conflicts
@@ -3477,15 +3548,15 @@ namespace nemesis {
                     // variable declaration is marked as erraneous by default
                     vdecl->invalid(true);
                     
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(id.location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This variable name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This variable name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(id.range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         vdecl->annotation().type = types::unknown();
@@ -3517,7 +3588,7 @@ namespace nemesis {
                                 .note(underline->range(), "Here's the homonymous declaration, you f*cker!");
                         }
                         
-                        publisher_.publish(builder.build());
+                        publisher().publish(builder.build());
                     }
                     else {
                         // the only case in which our variable will be analyzed because there are not conflicts
@@ -3529,15 +3600,15 @@ namespace nemesis {
             else if (auto fdecl = std::dynamic_pointer_cast<ast::function_declaration>(stmt)) {
             std::string name = fdecl->name().lexeme().string();
             auto other = scope_->function(name);
-            if (nucleus() && nucleus()->name == name) {
+            if (workspace()->name == name) {
                 auto diag = diagnostic::builder()
                             .location(fdecl->name().location())
                             .severity(diagnostic::severity::error)
-                            .message(diagnostic::format("This function name conflicts with nucleus name `$`, c*nt!", name))
+                            .message(diagnostic::format("This function name conflicts with workspace name `$`, c*nt!", name))
                             .highlight(fdecl->name().range(), "conflicting")
                             .build();
                 
-                publisher_.publish(diag);
+                publisher().publish(diag);
             }
             else if (types::builtin(name)) {
                 fdecl->annotation().type = types::unknown();
@@ -3553,7 +3624,7 @@ namespace nemesis {
                             .note(static_cast<const ast::function_declaration*>(other)->name().range(), "Here's the homonymous declaration, you f*cker!")
                             .build();
                 
-                publisher_.publish(diag);
+                publisher().publish(diag);
             }
             else {
                 scope_->function(name, fdecl.get());
@@ -3589,14 +3660,14 @@ namespace nemesis {
         // restore external pass
         pass_ = old;
         // third pass for constructing types, constants
-        // nucleus scope
+        // workspace scope
         for (auto pair : scope_->types()) try {
             // if not resolved then the type is traversed
             if (!pair.second->annotation().visited) pair.second->accept(*this);
         }
         catch (cyclic_symbol_error& err) {
             // recursive type error is printed
-            publisher_.publish(err.diagnostic());
+            publisher().publish(err.diagnostic());
             // if we catch an exception then we consider type resolved, at least to minimize errors
             // or false positives in detecting recursive cycles
             pair.second->annotation().resolved = true;
@@ -3610,7 +3681,7 @@ namespace nemesis {
             // restore scope
             scope_ = saved;
         }
-        // all nucleus constants are fully checked
+        // all workspace constants are fully checked
         for (auto pair : scope_->values()) try {
             // variables are analyzed later
             if (dynamic_cast<const ast::var_declaration*>(pair.second) || dynamic_cast<const ast::var_tupled_declaration*>(pair.second)) continue;
@@ -3619,7 +3690,7 @@ namespace nemesis {
         }
         catch (cyclic_symbol_error& err) {
             // recursive type error is printed
-            publisher_.publish(err.diagnostic());
+            publisher().publish(err.diagnostic());
             // if we catch an exception then we consider type resolved, at least to minimize errors
             // or false positives in detecting recursive cycles
             pair.second->annotation().resolved = true;
@@ -3683,7 +3754,7 @@ namespace nemesis {
             }
             catch (cyclic_symbol_error& err) {
                 // recursive type error is printed
-                publisher_.publish(err.diagnostic());
+                publisher().publish(err.diagnostic());
                 // if we catch an exception then we consider type resolved, at least to minimize errors
                 // or false positives in detecting recursive cycles
                 if (auto decl = std::dynamic_pointer_cast<ast::declaration>(stmt)) decl->annotation().resolved = true;
@@ -3750,7 +3821,7 @@ namespace nemesis {
                             .note(other->second.range(), "Here's the homonymous parameter, you f*cker!")
                             .build();
                 
-                publisher_.publish(diag);
+                publisher().publish(diag);
             }
             else {
                 names.emplace(param->name().lexeme().string(), param->name());
@@ -3781,7 +3852,7 @@ namespace nemesis {
                         if (expr.return_type_expression()) builder.note(expr.return_type_expression()->range(), diagnostic::format("You can see that return type of function expression is `$`.", result_type->string()));
                         else builder.insertion(source_range(expr.body()->range().begin(), 1), diagnostic::format("$ ", exprstmt->expression()->annotation().type->string()), "Try adding return type to definition.");
 
-                        publisher_.publish(builder.build());
+                        publisher().publish(builder.build());
                         expr.invalid(true);
                     }
                     else if (auto implicit = implicit_cast(result_type, exprstmt->expression())) {
@@ -3802,7 +3873,7 @@ namespace nemesis {
                     if (expr.return_type_expression()) builder.note(expr.return_type_expression()->range(), diagnostic::format("You can see that return type of function expression is `$`.", result_type->string()));
                     else builder.replacement(expr.result_range(), diagnostic::format("$ ", exprbody->annotation().type->string()), "Try adding return type to definition.");
 
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                     expr.invalid(true);
                 }
             }
@@ -3839,7 +3910,7 @@ namespace nemesis {
                                 .highlight(expr.expression()->range(), diagnostic::highlighter::mode::light)
                                 .build();
                     
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     expr.invalid(true);
                     expr.annotation().type = types::unknown();
                     throw semantic_error();
@@ -3860,7 +3931,7 @@ namespace nemesis {
                                 .highlight(expr.expression()->range(), diagnostic::highlighter::mode::light)
                                 .build();
                     
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     expr.invalid(true);
                     expr.annotation().type = types::unknown();
                     throw semantic_error();
@@ -3896,7 +3967,7 @@ namespace nemesis {
                                         .highlight(arg->range(), "missing string conversion")
                                         .explanation(diagnostic::format("I suggest providing string conversion property `str`, like this \\ \\ `extend $ { .str(self: $) string {...} }`", tname, tname));
 
-                        publisher_.publish(builder.build());
+                        publisher().publish(builder.build());
                     }
                     // implicit conversion to string calling 'str' property
                     else if (conversion) {
@@ -3958,7 +4029,7 @@ namespace nemesis {
                                         .message(diagnostic::format("This component must have type `$`, but I found `$`, idiot!", tuple_type->components().at(i)->string(), expr.arguments().at(i)->annotation().type->string()))
                                         .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", tuple_type->components().at(i)->string()));
 
-                            publisher_.publish(builder.build());
+                            publisher().publish(builder.build());
                         }
                     }
                     
@@ -3992,7 +4063,7 @@ namespace nemesis {
                                             .note(static_cast<const ast::field_declaration*>(item.get())->name().range(), diagnostic::format("Look at field `$` declaration, idiot.", name))
                                             .build();
 
-                                publisher_.publish(diag);
+                                publisher().publish(diag);
                                 expr.invalid(true);
                             }
                         }
@@ -4013,7 +4084,7 @@ namespace nemesis {
                                         .message(diagnostic::format("Field `$` must have type `$`, but I found `$`, idiot!", structure_type->fields().at(i).name, structure_type->fields().at(i).type->string(), expr.arguments().at(i)->annotation().type->string()))
                                         .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", structure_type->fields().at(i).type->string()));
 
-                            publisher_.publish(builder.build());
+                            publisher().publish(builder.build());
                         }
                     }
                     
@@ -4067,7 +4138,7 @@ namespace nemesis {
                                         .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme()))
                                         .build();
                                 
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             mistake = true;
                         }
                         else {
@@ -4082,7 +4153,7 @@ namespace nemesis {
                                             .note(name.range(), diagnostic::format("As you can see $ `$` was declared with exactly `$` generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme(), expected->parameters().size()))
                                             .build();
                                 
-                                publisher_.publish(diag);
+                                publisher().publish(diag);
                                 mistake = true;
                             }
                             else for (size_t i = 0; i < identifier->generics().size(); ++i)
@@ -4103,7 +4174,7 @@ namespace nemesis {
                                                     .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                     .build();
                                     
-                                                publisher_.publish(diag);
+                                                publisher().publish(diag);
                                                 mistake = true;
                                             }
                                             else if (!types::compatible(constant->annotation().type, newexpr->annotation().type)) {
@@ -4115,7 +4186,7 @@ namespace nemesis {
                                                     .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                     .build();
                                     
-                                                publisher_.publish(diag);
+                                                publisher().publish(diag);
                                                 mistake = true;
                                             }
                                             else {
@@ -4134,7 +4205,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                     }
@@ -4150,7 +4221,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else {
@@ -4172,7 +4243,7 @@ namespace nemesis {
                                                 .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
                                                 .build();
                                 
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else {
@@ -4214,7 +4285,7 @@ namespace nemesis {
                             for (std::size_t i = 0; i < fdecl->parameters().size(); ++i) {
                                 expr.arguments().at(i)->accept(*this);
 
-                                ast::type_matcher matcher(expr.arguments().at(i), fdecl->parameters().at(i)->annotation().type, publisher_);
+                                ast::type_matcher matcher(expr.arguments().at(i), fdecl->parameters().at(i)->annotation().type, publisher());
                                 if (!matcher.match(expr.arguments().at(i)->annotation().type, match, std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().at(i))->is_variadic()) && !match.duplication) {
                                     auto param = std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().at(i));
                                     auto builder = diagnostic::builder()
@@ -4225,7 +4296,7 @@ namespace nemesis {
                                                 .message(diagnostic::format("Type mismatch between argument and parameter, found `$` and `$`.", expr.arguments().at(i)->annotation().type->string(), param->annotation().type->string()))
                                                 .note(param->name().range(), diagnostic::format("Have a look at parameter `$` idiot.", param->name().lexeme()));
                                     
-                                    publisher_.publish(builder.build());
+                                    publisher().publish(builder.build());
                                 }
                             }
 
@@ -4252,7 +4323,7 @@ namespace nemesis {
                                                     .message(diagnostic::format("I can't deduce $ parameter `$` in this function call, dammit!", generic_parameter->kind() == ast::kind::generic_const_parameter_declaration ? "value" : "type", name.lexeme()))
                                                     .replacement(expr.callee()->range(), oss.str(), diagnostic::format("Try specifying argument `$` explicit to make it clear!", name.lexeme()));
                                         
-                                        publisher_.publish(builder.build());
+                                        publisher().publish(builder.build());
                                         concrete = false;
                                     }
                                     else if (generic_parameter->kind() == ast::kind::generic_const_parameter_declaration) {
@@ -4297,7 +4368,7 @@ namespace nemesis {
                                         .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme()))
                                         .build();
                                 
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
 
                             expr.invalid(true);
                             expr.annotation().type = types::unknown();
@@ -4315,7 +4386,7 @@ namespace nemesis {
                                         .note(name.range(), diagnostic::format("As you can see callable `$` was declared without generic parameters.", name.lexeme()))
                                         .build();
                                 
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             expr.invalid(true);
                             expr.annotation().type = types::unknown();
                             throw semantic_error();
@@ -4353,7 +4424,7 @@ namespace nemesis {
                                                 .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", variadic->string(), expr.arguments().at(j)->annotation().type->string()))
                                                 .highlight(expr.arguments().at(j)->range(), diagnostic::format("expected $", variadic->string()));
 
-                                    publisher_.publish(builder.build());
+                                    publisher().publish(builder.build());
                                 }
                                 elements.push_back(expr.arguments().at(j));
                             }
@@ -4386,7 +4457,7 @@ namespace nemesis {
                                             .message(diagnostic::format("__This argument must have type `$`, but I found `$`, idiot!", fntype->formals().at(i)->string(), expr.arguments().at(i)->annotation().type->string()))
                                             .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", fntype->formals().at(i)->string()));
 
-                                publisher_.publish(builder.build());
+                                publisher().publish(builder.build());
                             }
                         }
                     }
@@ -4421,7 +4492,7 @@ namespace nemesis {
                                         .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name))
                                         .build();
                                 
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             mistake = true;
                         }
                         else {
@@ -4436,7 +4507,7 @@ namespace nemesis {
                                             .note(name.range(), diagnostic::format("As you can see $ `$` was declared with exactly `$` generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name, expected->parameters().size()))
                                             .build();
                                 
-                                publisher_.publish(diag);
+                                publisher().publish(diag);
                                 mistake = true;
                             }
                             else for (size_t i = 0; i < identifier->generics().size(); ++i)
@@ -4457,7 +4528,7 @@ namespace nemesis {
                                                     .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                     .build();
                                     
-                                                publisher_.publish(diag);
+                                                publisher().publish(diag);
                                                 mistake = true;
                                             }
                                             else if (!types::compatible(constant->annotation().type, newexpr->annotation().type)) {
@@ -4469,7 +4540,7 @@ namespace nemesis {
                                                     .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                     .build();
                                     
-                                                publisher_.publish(diag);
+                                                publisher().publish(diag);
                                                 mistake = true;
                                             }
                                             else {
@@ -4488,7 +4559,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                     }
@@ -4504,7 +4575,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else {
@@ -4526,7 +4597,7 @@ namespace nemesis {
                                                 .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
                                                 .build();
                                 
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else {
@@ -4565,7 +4636,7 @@ namespace nemesis {
                             }
 
                             if (!fdecl->parameters().empty()) {
-                                ast::type_matcher matcher(member->expression(), fdecl->parameters().front()->annotation().type, publisher_);
+                                ast::type_matcher matcher(member->expression(), fdecl->parameters().front()->annotation().type, publisher());
                                 matcher.match(member->expression()->annotation().type, match, std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().front())->is_variadic());
                             }
 
@@ -4573,7 +4644,7 @@ namespace nemesis {
                             for (std::size_t i = 1; i < fdecl->parameters().size(); ++i) {
                                 expr.arguments().at(i - 1)->accept(*this);
 
-                                ast::type_matcher matcher(expr.arguments().at(i - 1), fdecl->parameters().at(i)->annotation().type, publisher_);
+                                ast::type_matcher matcher(expr.arguments().at(i - 1), fdecl->parameters().at(i)->annotation().type, publisher());
                                 if (!matcher.match(expr.arguments().at(i - 1)->annotation().type, match, std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().at(i))->is_variadic()) && !match.duplication) {
                                     auto param = std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().at(i));
                                     auto builder = diagnostic::builder()
@@ -4584,7 +4655,7 @@ namespace nemesis {
                                                 .message(diagnostic::format("Type mismatch between argument and parameter, found `$` and `$`.", expr.arguments().at(i - 1)->annotation().type->string(), param->annotation().type->string()))
                                                 .note(param->name().range(), diagnostic::format("Have a look at parameter `$` idiot.", param->name().lexeme()));
                                     
-                                    publisher_.publish(builder.build());
+                                    publisher().publish(builder.build());
                                 }
                             }
 
@@ -4611,7 +4682,7 @@ namespace nemesis {
                                                     .message(diagnostic::format("I can't deduce $ parameter `$` in this function call, dammit!", generic_parameter->kind() == ast::kind::generic_const_parameter_declaration ? "value" : "type", name.lexeme()))
                                                     .replacement(expr.callee()->range(), oss.str(), diagnostic::format("Try specifying argument `$` explicit to make it clear!", name.lexeme()));
                                         
-                                        publisher_.publish(builder.build());
+                                        publisher().publish(builder.build());
                                         concrete = false;
                                     }
                                     else if (generic_parameter->kind() == ast::kind::generic_const_parameter_declaration) {
@@ -4656,7 +4727,7 @@ namespace nemesis {
                                         .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme()))
                                         .build();
                                 
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
 
                             expr.invalid(true);
                             expr.annotation().type = types::unknown();
@@ -4674,7 +4745,7 @@ namespace nemesis {
                                         .note(name.range(), diagnostic::format("As you can see callable `$` was declared without generic parameters.", name.lexeme()))
                                         .build();
                                 
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             expr.invalid(true);
                             expr.annotation().type = types::unknown();
                             throw semantic_error();
@@ -4716,7 +4787,7 @@ namespace nemesis {
                                                 .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", variadic->string(), expr.arguments().at(j)->annotation().type->string()))
                                                 .highlight(expr.arguments().at(j)->range(), diagnostic::format("expected $", variadic->string()));
 
-                                    publisher_.publish(builder.build());
+                                    publisher().publish(builder.build());
                                 }
                                 elements.push_back(expr.arguments().at(j));
                             }
@@ -4748,7 +4819,7 @@ namespace nemesis {
                                             .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", fntype->formals().at(i + 1)->string(), expr.arguments().at(i)->annotation().type->string()))
                                             .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", fntype->formals().at(i + 1)->string()));
 
-                                publisher_.publish(builder.build());
+                                publisher().publish(builder.build());
                             }
                         }
                     }
@@ -4780,7 +4851,7 @@ namespace nemesis {
                                         .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", fntype->formals().at(i)->string(), expr.arguments().at(i)->annotation().type->string()))
                                         .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", fntype->formals().at(i)->string()));
 
-                            publisher_.publish(builder.build());
+                            publisher().publish(builder.build());
                         }
                     }
                 }
@@ -4827,7 +4898,7 @@ namespace nemesis {
                                         .message(diagnostic::format("This component must have type `$`, but I found `$`, idiot!", tuple_type->components().at(i)->string(), expr.arguments().at(i)->annotation().type->string()))
                                         .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", tuple_type->components().at(i)->string()));
 
-                            publisher_.publish(builder.build());
+                            publisher().publish(builder.build());
                         }
                     }
                     
@@ -4860,7 +4931,7 @@ namespace nemesis {
                                             .note(static_cast<const ast::field_declaration*>(item.get())->name().range(), diagnostic::format("Look at field `$` declaration, idiot.", name))
                                             .build();
 
-                                publisher_.publish(diag);
+                                publisher().publish(diag);
                                 expr.invalid(true);
                             }
                         }
@@ -4881,7 +4952,7 @@ namespace nemesis {
                                         .message(diagnostic::format("Field `$` must have type `$`, but I found `$`, idiot!", structure_type->fields().at(i).name, structure_type->fields().at(i).type->string(), expr.arguments().at(i)->annotation().type->string()))
                                         .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", structure_type->fields().at(i).type->string()));
 
-                            publisher_.publish(builder.build());
+                            publisher().publish(builder.build());
                         }
                     }
                     
@@ -4933,7 +5004,7 @@ namespace nemesis {
                                     .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme()))
                                     .build();
                             
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         mistake = true;
                     }
                     else {
@@ -4948,7 +5019,7 @@ namespace nemesis {
                                         .note(name.range(), diagnostic::format("As you can see $ `$` was declared with exactly `$` generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme(), expected->parameters().size()))
                                         .build();
                             
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             mistake = true;
                         }
                         else for (size_t i = 0; i < identifier->generics().size(); ++i)
@@ -4969,7 +5040,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else if (!types::compatible(constant->annotation().type, newexpr->annotation().type)) {
@@ -4981,7 +5052,7 @@ namespace nemesis {
                                                 .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                 .build();
                                 
-                                            publisher_.publish(diag);
+                                            publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else {
@@ -5000,7 +5071,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                 }
@@ -5016,7 +5087,7 @@ namespace nemesis {
                                             .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                             .build();
                             
-                                        publisher_.publish(diag);
+                                        publisher().publish(diag);
                                         mistake = true;
                                     }
                                     else {
@@ -5038,7 +5109,7 @@ namespace nemesis {
                                             .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
                                             .build();
                             
-                                    publisher_.publish(diag);
+                                    publisher().publish(diag);
                                     mistake = true;
                                 }
                                 else {
@@ -5080,7 +5151,7 @@ namespace nemesis {
                         for (std::size_t i = 0; i < fdecl->parameters().size(); ++i) {
                             expr.arguments().at(i)->accept(*this);
 
-                            ast::type_matcher matcher(expr.arguments().at(i), fdecl->parameters().at(i)->annotation().type, publisher_);
+                            ast::type_matcher matcher(expr.arguments().at(i), fdecl->parameters().at(i)->annotation().type, publisher());
                             if (!matcher.match(expr.arguments().at(i)->annotation().type, match, std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().at(i))->is_variadic()) && !match.duplication) {
                                 auto param = std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().at(i));
                                 auto builder = diagnostic::builder()
@@ -5091,7 +5162,7 @@ namespace nemesis {
                                             .message(diagnostic::format("Type mismatch between argument and parameter, found `$` and `$`.", expr.arguments().at(i)->annotation().type->string(), param->annotation().type->string()))
                                             .note(param->name().range(), diagnostic::format("Have a look at parameter `$` idiot.", param->name().lexeme()));
                                 
-                                publisher_.publish(builder.build());
+                                publisher().publish(builder.build());
                             }
                         }
 
@@ -5118,7 +5189,7 @@ namespace nemesis {
                                                 .message(diagnostic::format("I can't deduce $ parameter `$` in this function call, dammit!", generic_parameter->kind() == ast::kind::generic_const_parameter_declaration ? "value" : "type", name.lexeme()))
                                                 .replacement(expr.callee()->range(), oss.str(), diagnostic::format("Try specifying argument `$` explicit to make it clear!", name.lexeme()));
                                     
-                                    publisher_.publish(builder.build());
+                                    publisher().publish(builder.build());
                                     concrete = false;
                                 }
                                 else if (generic_parameter->kind() == ast::kind::generic_const_parameter_declaration) {
@@ -5168,7 +5239,7 @@ namespace nemesis {
                                     if (auto constraint = std::static_pointer_cast<ast::generic_clause_declaration>(fdecl->generic())->constraint()) builder.highlight(constraint->range(), diagnostic::highlighter::mode::light);
                                 }
 
-                                publisher_.publish(builder.build());
+                                publisher().publish(builder.build());
                                 expr.annotation().type = types::unknown();
                                 expr.invalid(true);
                                 throw semantic_error();
@@ -5191,7 +5262,7 @@ namespace nemesis {
                                     .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme()))
                                     .build();
                             
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
 
                         expr.invalid(true);
                         expr.annotation().type = types::unknown();
@@ -5209,7 +5280,7 @@ namespace nemesis {
                                     .note(name.range(), diagnostic::format("As you can see callable `$` was declared without generic parameters.", name.lexeme()))
                                     .build();
                             
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         expr.invalid(true);
                         expr.annotation().type = types::unknown();
                         throw semantic_error();
@@ -5249,7 +5320,7 @@ namespace nemesis {
                                             .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", variadic->string(), expr.arguments().at(j)->annotation().type->string()))
                                             .highlight(expr.arguments().at(j)->range(), diagnostic::format("expected $", variadic->string()));
 
-                                publisher_.publish(builder.build());
+                                publisher().publish(builder.build());
                             }
                             elements.push_back(expr.arguments().at(j));
                         }
@@ -5282,7 +5353,7 @@ namespace nemesis {
                                         .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", fntype->formals().at(i)->string(), expr.arguments().at(i)->annotation().type->string()))
                                         .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", fntype->formals().at(i)->string()));
 
-                            publisher_.publish(builder.build());
+                            publisher().publish(builder.build());
                         }
                     }
                 }
@@ -5416,7 +5487,7 @@ namespace nemesis {
                         
                     expr.invalid(true);
                     expr.annotation().type = types::unknown();
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     throw semantic_error();
                 }
                 // if symbol is a constant it cannot be accessed through instance but must be accessed through its type
@@ -5431,7 +5502,7 @@ namespace nemesis {
                         
                     expr.invalid(true);
                     expr.annotation().type = types::unknown();
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     throw semantic_error();
                 }
                 else if (auto function = dynamic_cast<const ast::function_declaration*>(expr.member()->annotation().referencing)) {
@@ -5450,7 +5521,7 @@ namespace nemesis {
                             
                         expr.invalid(true);
                         expr.annotation().type = types::unknown();
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         throw semantic_error();
                     }
                 }
@@ -5487,7 +5558,7 @@ namespace nemesis {
                                 .highlight(expr.member()->range(), "inaccessible")
                                 .build();
                 
-                publisher_.publish(diag);
+                publisher().publish(diag);
                 throw semantic_error();
             }
         }
@@ -5595,7 +5666,7 @@ namespace nemesis {
                             .highlight(expr.expression()->range(), diagnostic::highlighter::mode::light)
                             .build();
                     
-                publisher_.publish(diag);
+                publisher().publish(diag);
                 expr.invalid(true);
                 throw semantic_error();
             }
@@ -5612,7 +5683,7 @@ namespace nemesis {
                         .highlight(expr.expression()->range(), diagnostic::highlighter::mode::light)
                         .build();
                 
-            publisher_.publish(diag);
+            publisher().publish(diag);
             expr.invalid(true);
             throw semantic_error();
         }
@@ -5652,7 +5723,7 @@ namespace nemesis {
                         .highlight(expr.expression()->range(), diagnostic::highlighter::mode::light)
                         .build();
                 
-            publisher_.publish(diag);
+            publisher().publish(diag);
             expr.invalid(true);
             throw semantic_error();
         }
@@ -5689,7 +5760,7 @@ namespace nemesis {
                     builder.note(typedecl->name().range(), diagnostic::format("As you can see type `$` is not declared as a structure.", typedecl->annotation().type->string()));
                 }
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 expr.invalid(true);
                 throw semantic_error();
             }
@@ -5731,7 +5802,7 @@ namespace nemesis {
                         builder.note(typedecl->name().range(), diagnostic::format("Take a look at type `$` declaration.", structure->string()));
                     }
                         
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                     expr.invalid(true);
                 }
                 else if (is_initialized->second) {
@@ -5743,7 +5814,7 @@ namespace nemesis {
                                 .highlight(names.at(name).range(), diagnostic::highlighter::mode::light)
                                 .build();
 
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     expr.invalid(true);
                 }
                 else {
@@ -5760,7 +5831,7 @@ namespace nemesis {
                                         .note(static_cast<const ast::field_declaration*>(item->get())->name().range(), diagnostic::format("Look at field `$` declaration, idiot.", name))
                                         .build();
 
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             expr.invalid(true);
                         }
                     }
@@ -5778,7 +5849,7 @@ namespace nemesis {
                                     .highlight(init.value()->range(), diagnostic::format("expected `$`", type->string()))
                                     .build();
 
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         expr.invalid(true);
                     }
                     else {
@@ -5824,7 +5895,7 @@ namespace nemesis {
                                 .highlight(result->second.range(), diagnostic::highlighter::mode::light)
                                 .build();
 
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     expr.invalid(true);
                 }
                 else {
@@ -7588,7 +7659,7 @@ namespace nemesis {
                     builder.message(diagnostic::format("Pattern must be a constant, which function `$` is not, c*nt!", function->name().lexeme())).note(function->name().range(), diagnostic::format("Look at function `$` declaration.", function->name().lexeme()));
                 }
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 expr.invalid(true);
                 throw semantic_error();
             }
@@ -7730,7 +7801,7 @@ namespace nemesis {
                                     .note(static_cast<const ast::field_declaration*>(item.get())->name().range(), diagnostic::format("Look at field `$` declaration, idiot.", name))
                                     .build();
 
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                         expr.invalid(true);
                     }
                 }
@@ -7810,7 +7881,7 @@ namespace nemesis {
                         builder.note(typedecl->name().range(), diagnostic::format("Take a look at type `$` declaration.", structure_type->string()));
                     }
                         
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                     expr.invalid(true);
                 }
                 // test for duplicates field initializers
@@ -7823,7 +7894,7 @@ namespace nemesis {
                                 .highlight(names.at(name).range(), diagnostic::highlighter::mode::light)
                                 .build();
 
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     expr.invalid(true);
                 }
                 else {
@@ -7840,7 +7911,7 @@ namespace nemesis {
                                         .note(static_cast<const ast::field_declaration*>(item->get())->name().range(), diagnostic::format("Look at field `$` declaration, idiot.", name))
                                         .build();
 
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                             expr.invalid(true);
                         }
                     }
@@ -7938,7 +8009,7 @@ namespace nemesis {
 
             if (branch.pattern()->invalid()) continue;
 
-            ast::pattern_matcher pattern_matcher(*branch.pattern(), publisher_, *this);
+            ast::pattern_matcher pattern_matcher(*branch.pattern(), publisher(), *this);
             auto result = pattern_matcher.match(*expr.condition());
 
             if (!result) continue;
@@ -7987,7 +8058,7 @@ namespace nemesis {
                                 .note(exprnode->range(), diagnostic::format("You idiot make me think that result type should be `$` from here.", exprnode->annotation().type->string()))
                                 .build();
                     
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     expr.invalid(true);
                 }
                 else if (auto implicit = implicit_cast(exprnode->annotation().type, branch.body())) {
@@ -8017,7 +8088,7 @@ namespace nemesis {
                             .note(range1, diagnostic::format("As you can see when body has type `$`.", exprnode->annotation().type->string()))
                             .highlight(range2);
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 expr.invalid(true);
             }
         }
@@ -8036,7 +8107,7 @@ namespace nemesis {
             throw semantic_error();
         }
 
-        ast::pattern_matcher pattern_matcher(*expr.pattern(), publisher_, *this);
+        ast::pattern_matcher pattern_matcher(*expr.pattern(), publisher(), *this);
         auto result = pattern_matcher.match(*expr.condition());
 
         begin_scope(&expr);
@@ -8091,7 +8162,7 @@ namespace nemesis {
                             .note(range1, diagnostic::format("As you can see when body has type `$`.", expr.body()->annotation().type->string()))
                             .highlight(range2);
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 expr.invalid(true);
             }
         }
@@ -8122,7 +8193,7 @@ namespace nemesis {
                         .note(expr.type_expression()->range(), diagnostic::format("Type `$` is what you are testing against to perform an automatic cast inside when body!", expr.type_expression()->annotation().type->string()))
                         .highlight(expr.condition()->range());
 
-            publisher_.publish(builder.build());
+            publisher().publish(builder.build());
             expr.invalid(true);
         }
 
@@ -8200,7 +8271,7 @@ namespace nemesis {
                             .note(range1, diagnostic::format("As you can see when body has type `$`.", expr.body()->annotation().type->string()))
                             .highlight(range2);
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 expr.invalid(true);
             }
         }
@@ -8271,7 +8342,7 @@ namespace nemesis {
                             .highlight(range2)
                             .explanation("For body takes its type from any `break` statement it contains, otherwise it defaults to type `()`.");
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 expr.invalid(true);
             }
         }
@@ -8337,7 +8408,7 @@ namespace nemesis {
                             .highlight(range2)
                             .explanation("For body takes its type from any `break` statement it contains, otherwise it defaults to type `()`.");
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 expr.invalid(true);
             }
         }
@@ -8384,7 +8455,7 @@ namespace nemesis {
                             .note(range1, diagnostic::format("As you can see if body has type `$`.", expr.body()->annotation().type->string()))
                             .highlight(range2);
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 expr.invalid(true);
             }
         }
@@ -8434,7 +8505,7 @@ namespace nemesis {
                                 .highlight(stmt.right()->range(), diagnostic::format("expected $", stmt.left()->annotation().type->string()), diagnostic::highlighter::mode::light)
                                 .build();
                     
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                     stmt.invalid(true);
                 }
                 else if (auto implicit = implicit_cast(stmt.left()->annotation().type, stmt.right())) {
@@ -8753,7 +8824,7 @@ namespace nemesis {
 
                     if (fndecl->return_type_expression()) builder.note(fndecl->return_type_expression()->range(), diagnostic::format("You can see that return type of function `$` is `$`.", fndecl->name().lexeme(), expected->string()));
 
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                 }
 
                 if (auto body = std::static_pointer_cast<ast::block_expression>(fndecl->body())) body->exprnode() = &stmt;
@@ -8773,7 +8844,7 @@ namespace nemesis {
 
                     if (fndecl->return_type_expression()) builder.note(fndecl->return_type_expression()->range(), diagnostic::format("You can see that return type of property `$` is `$`.", fndecl->name().lexeme(), expected->string()));
 
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                 }
 
                 if (auto body = std::static_pointer_cast<ast::block_expression>(fndecl->body())) body->exprnode() = &stmt;
@@ -8793,7 +8864,7 @@ namespace nemesis {
 
                     if (fnexpr->return_type_expression()) builder.note(fnexpr->return_type_expression()->range(), diagnostic::format("You can see that return type of function expression is `$`.", expected->string()));
 
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                 }
                 else if (auto implicit = implicit_cast(expected, stmt.expression())) {
                     stmt.expression() = implicit;
@@ -8835,7 +8906,7 @@ namespace nemesis {
                                     .message(diagnostic::format("For range expects break type `$` but I found type `$` instead, idiot!", expected->string(), stmt.expression()->annotation().type->string()))
                                     .highlight(stmt.expression()->range());
 
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                 }
             }
             else if (auto loop = dynamic_cast<const ast::for_loop_expression*>(decl)) {
@@ -8856,7 +8927,7 @@ namespace nemesis {
                                     .message(diagnostic::format("For loop expects break type `$` but I found type `$` instead, idiot!", expected->string(), stmt.expression()->annotation().type->string()))
                                     .highlight(stmt.expression()->range());
 
-                    publisher_.publish(builder.build());               
+                    publisher().publish(builder.build());               
                 }
             }
         }
@@ -8953,7 +9024,7 @@ namespace nemesis {
                             .note(decl.type_expression()->range(), diagnostic::format("Here you tell me that variable type is `$`, dumb*ss!", expected))
                             .build();
                 
-                publisher_.publish(diag);
+                publisher().publish(diag);
                 decl.invalid(true);
                 decl.annotation().type = decl.type_expression()->annotation().type;
             }
@@ -8992,7 +9063,7 @@ namespace nemesis {
                     builder.note(vardecl->name().range(), "Here's the homonymous declaration, you idiot!");
                 }
                 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
             }
             else {
                 scope_->value(name, &decl);
@@ -9003,7 +9074,7 @@ namespace nemesis {
         if (decl.annotation().type) decl.annotation().type->mutability = decl.is_mutable();
         else decl.annotation().type = types::unknown();
         // recorded as global
-        if (auto nucleus = dynamic_cast<const ast::nucleus*>(scope_->enclosing())) const_cast<ast::nucleus*>(nucleus)->globals.push_back(&decl);
+        if (auto workspace = dynamic_cast<const ast::workspace*>(scope_->enclosing())) const_cast<ast::workspace*>(workspace)->globals.push_back(&decl);
     }
 
     void checker::visit(const ast::var_tupled_declaration& decl)
@@ -9032,7 +9103,7 @@ namespace nemesis {
 
                 for (auto name : decl.names()) builder.highlight(name.range(), diagnostic::highlighter::mode::light);
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 decl.invalid(true);
                 throw semantic_error();
             }
@@ -9048,7 +9119,7 @@ namespace nemesis {
 
                 for (auto name : decl.names()) builder.highlight(name.range(), diagnostic::highlighter::mode::light);
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 decl.invalid(true);
                 throw semantic_error();
             }
@@ -9064,7 +9135,7 @@ namespace nemesis {
 
                 for (auto name : decl.names()) builder.highlight(name.range(), diagnostic::highlighter::mode::light);
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 decl.invalid(true);
                 throw semantic_error();
             }
@@ -9079,7 +9150,7 @@ namespace nemesis {
 
             for (auto name : decl.names()) builder.highlight(name.range(), diagnostic::highlighter::mode::light);
 
-            publisher_.publish(builder.build());
+            publisher().publish(builder.build());
             decl.invalid(true);
             throw semantic_error();
         }
@@ -9091,7 +9162,7 @@ namespace nemesis {
         auto clone = ast::create<ast::var_declaration>(decl.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(structured_name.data()).build()).build(), nullptr, decl.value());
         clone->annotation() = decl.annotation();
         // this is done for smart pointers management
-        nucleus()->saved.push_back(clone);
+        workspace()->saved.push_back(clone);
         // add artificial var declaration to current scope
         pending_insertions.emplace_back(scope_, clone, &decl);
 
@@ -9124,7 +9195,7 @@ namespace nemesis {
                         builder.note(vardecl->name().range(), "Here's the homonymous declaration, you idiot!");
                     }
                     
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                 }
                 else {
                     ast::pointer<ast::expression> value = nullptr;
@@ -9158,7 +9229,7 @@ namespace nemesis {
                     // test that immutability is preserved
                     if (decl.value()) test_immutable_assignment(*vardecl, *decl.value());
                     // this is done for smart pointers management
-                    nucleus()->saved.push_back(vardecl);
+                    workspace()->saved.push_back(vardecl);
 
                     scope_->remove(vardecl.get());
                     scope_->value(name, vardecl.get());
@@ -9223,7 +9294,7 @@ namespace nemesis {
                         .note(decl.type_expression()->range(), diagnostic::format("Here you tell me that constant type is `$`, dumb*ss!", expected))
                         .build();
             
-            publisher_.publish(diag);
+            publisher().publish(diag);
             decl.invalid(true);
             decl.annotation().type = decl.type_expression()->annotation().type;
         }
@@ -9253,7 +9324,7 @@ namespace nemesis {
                     builder.note(vardecl->name().range(), "Here's the homonymous declaration, you idiot!");
                 }
                 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
             }
             else {
                 scope_->value(name, &decl);
@@ -9262,7 +9333,7 @@ namespace nemesis {
 
         decl.annotation().resolved = true;
         // recorded as global
-        if (auto nucleus = dynamic_cast<const ast::nucleus*>(scope_->enclosing())) const_cast<ast::nucleus*>(nucleus)->globals.push_back(&decl);
+        if (auto workspace = dynamic_cast<const ast::workspace*>(scope_->enclosing())) const_cast<ast::workspace*>(workspace)->globals.push_back(&decl);
     }
 
     void checker::visit(const ast::const_tupled_declaration& decl) 
@@ -9300,7 +9371,7 @@ namespace nemesis {
 
                 for (auto name : decl.names()) builder.highlight(name.range(), diagnostic::highlighter::mode::light);
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 decl.invalid(true);
                 throw semantic_error();
             }
@@ -9316,7 +9387,7 @@ namespace nemesis {
 
                 for (auto name : decl.names()) builder.highlight(name.range(), diagnostic::highlighter::mode::light);
 
-                publisher_.publish(builder.build());
+                publisher().publish(builder.build());
                 decl.invalid(true);
                 throw semantic_error();
             }
@@ -9331,7 +9402,7 @@ namespace nemesis {
 
             for (auto name : decl.names()) builder.highlight(name.range(), diagnostic::highlighter::mode::light);
 
-            publisher_.publish(builder.build());
+            publisher().publish(builder.build());
             decl.invalid(true);
             throw semantic_error();
         }
@@ -9343,7 +9414,7 @@ namespace nemesis {
         auto clone = ast::create<ast::const_declaration>(decl.range(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(structured_name.data()).build()).build(), nullptr, decl.value());
         clone->annotation() = decl.annotation();
         // this is done for smart pointers management
-        nucleus()->saved.push_back(clone);
+        workspace()->saved.push_back(clone);
         // add artificial var declaration to current scope
         pending_insertions.emplace_back(scope_, clone, &decl);
 
@@ -9379,7 +9450,7 @@ namespace nemesis {
                         builder.note(vardecl->name().range(), "Here's the homonymous declaration, you idiot!");
                     }
                     
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                 }
                 else {
                     ast::pointer<ast::expression> value = nullptr;
@@ -9406,7 +9477,7 @@ namespace nemesis {
                     } 
                     catch (evaluator::generic_evaluation&) {}
                 
-                    nucleus()->saved.push_back(constdecl);
+                    workspace()->saved.push_back(constdecl);
 
                     scope_->remove(constdecl.get());
                     scope_->value(name, constdecl.get());
@@ -9448,7 +9519,7 @@ namespace nemesis {
                         .note(dynamic_cast<const ast::generic_const_parameter_declaration*>(other)->name().range(), "Here's the previous declaration.")
                         .build();
 
-            publisher_.publish(diag);
+            publisher().publish(diag);
             decl.invalid(true);
         }
         else {
@@ -9464,7 +9535,7 @@ namespace nemesis {
                             .note(static_cast<const ast::generic_const_parameter_declaration*>(other)->name().range(), "Here's the other declaration.")
                             .build();
 
-                publisher_.publish(diag);
+                publisher().publish(diag);
                 decl.invalid(true);
             }
             
@@ -9493,7 +9564,7 @@ namespace nemesis {
                         .note(dynamic_cast<const ast::generic_type_parameter_declaration*>(other)->name().range(), "Here's the previous declaration.")
                         .build();
 
-            publisher_.publish(diag);
+            publisher().publish(diag);
             decl.invalid(true);
         }
         else {
@@ -9509,7 +9580,7 @@ namespace nemesis {
                             .note(static_cast<const ast::generic_type_parameter_declaration*>(other)->name().range(), "Here's the other declaration.")
                             .build();
 
-                publisher_.publish(diag);
+                publisher().publish(diag);
                 decl.invalid(true);
             }
             
@@ -9554,7 +9625,7 @@ namespace nemesis {
                             .note(other->second.range(), "Here's the homonymous parameter, you f*cker!")
                             .build();
                 
-                publisher_.publish(diag);
+                publisher().publish(diag);
             }
             else {
                 names.emplace(param->name().lexeme().string(), param->name());
@@ -9597,7 +9668,7 @@ namespace nemesis {
                             builder.replacement(decl.return_type_expression()->range(), exprstmt->expression()->annotation().type->string(), "Try replacing return type in definition.");
                         }
 
-                        publisher_.publish(builder.build());
+                        publisher().publish(builder.build());
                         decl.invalid(true);
                     }
                 }
@@ -9623,7 +9694,7 @@ namespace nemesis {
                         builder.replacement(decl.return_type_expression()->range(), exprbody->annotation().type->string(), "Try replacing return type in definition.");
                     }
 
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                     decl.invalid(true);
                 }
             }
@@ -9641,8 +9712,8 @@ namespace nemesis {
         }
 
         decl.annotation().resolved = true;
-        // if not associated function, then it is added to all nucleus functions
-        if (!decl.generic() && !dynamic_cast<const ast::type_declaration*>(scope_->enclosing())) nucleus()->functions.push_back(&decl);
+        // if not associated function, then it is added to all workspace functions
+        if (!decl.generic() && !dynamic_cast<const ast::type_declaration*>(scope_->enclosing())) workspace()->functions.push_back(&decl);
     }
 
     void checker::visit(const ast::property_declaration& decl) 
@@ -9670,7 +9741,7 @@ namespace nemesis {
                             .note(other->second.range(), "Here's the homonymous parameter, you f*cker!")
                             .build();
                 
-                publisher_.publish(diag);
+                publisher().publish(diag);
             }
             else {
                 names.emplace(param->name().lexeme().string(), param->name());
@@ -9723,7 +9794,7 @@ namespace nemesis {
                             builder.replacement(decl.return_type_expression()->range(), exprstmt->expression()->annotation().type->string(), "Try replacing return type in definition.");
                         }
 
-                        publisher_.publish(builder.build());
+                        publisher().publish(builder.build());
                         decl.invalid(true);
                     }
                 }
@@ -9749,7 +9820,7 @@ namespace nemesis {
                         builder.replacement(decl.return_type_expression()->range(), exprbody->annotation().type->string(), "Try replacing return type in definition.");
                     }
 
-                    publisher_.publish(builder.build());
+                    publisher().publish(builder.build());
                     decl.invalid(true);
                 }
             }
@@ -9794,7 +9865,7 @@ namespace nemesis {
         catch (abort_error&) { throw; }
         catch (cyclic_symbol_error& e) 
         {
-            publisher_.publish(e.diagnostic());
+            publisher().publish(e.diagnostic());
             scope_ = saved;
         }
         catch (semantic_error&) { scope_ = saved; }
@@ -9804,15 +9875,15 @@ namespace nemesis {
                 if (auto fdecl = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) {
                     std::string name = fdecl->name().lexeme().string();
                     auto other = scope_->function(name);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(fdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This function name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This function name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(fdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         fdecl->annotation().type = types::unknown();
@@ -9828,7 +9899,7 @@ namespace nemesis {
                                     .note(static_cast<const ast::function_declaration*>(other)->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                         scope_->function(name, fdecl.get());
@@ -9837,15 +9908,15 @@ namespace nemesis {
                 else if (auto pdecl = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) {
                     std::string name = pdecl->name().lexeme().string();
                     auto other = scope_->function(name);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(pdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This property name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This property name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(pdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         pdecl->annotation().type = types::unknown();
@@ -9861,7 +9932,7 @@ namespace nemesis {
                                     .note(static_cast<const ast::function_declaration*>(other)->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                         scope_->function(name, pdecl.get());
@@ -10012,7 +10083,7 @@ namespace nemesis {
             case ast::type::category::array_type:
             case ast::type::category::behaviour_type:
             case ast::type::category::unknown_type:
-            case ast::type::category::nucleus_type:
+            case ast::type::category::workspace_type:
             case ast::type::category::generic_type:
                 return false;
             default:
@@ -10084,15 +10155,15 @@ namespace nemesis {
                 if (auto tdecl = std::dynamic_pointer_cast<ast::type_declaration>(stmt)) {
                     std::string name = tdecl->name().lexeme().string();
                     auto other = scope_->type(name, false);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(tdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This type name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This type name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(tdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         tdecl->annotation().type = types::unknown();
@@ -10108,7 +10179,7 @@ namespace nemesis {
                                     .note(other->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                         scope_->type(name, tdecl.get());
@@ -10117,15 +10188,15 @@ namespace nemesis {
                 else if (auto cdecl = std::dynamic_pointer_cast<ast::const_declaration>(stmt)) {
                     std::string name = cdecl->name().lexeme().string();
                     auto other = scope_->value(name, false);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(cdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This constant name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This constant name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(cdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         cdecl->annotation().type = types::unknown();
@@ -10148,7 +10219,7 @@ namespace nemesis {
                                 .note(underline->range(), "Here's the homonymous declaration, you f*cker!");
                         }
                         
-                        publisher_.publish(builder.build());
+                        publisher().publish(builder.build());
                     }
                     else {
                         scope_->value(name, cdecl.get());
@@ -10161,15 +10232,15 @@ namespace nemesis {
                         // variable declaration is marked as erraneous by default
                         cdecl->invalid(true);
                         
-                        if (nucleus() && nucleus()->name == name) {
+                        if (workspace()->name == name) {
                             auto diag = diagnostic::builder()
                                         .location(id.location())
                                         .severity(diagnostic::severity::error)
-                                        .message(diagnostic::format("This constant name conflicts with nucleus name `$`, c*nt!", name))
+                                        .message(diagnostic::format("This constant name conflicts with workspace name `$`, c*nt!", name))
                                         .highlight(id.range(), "conflicting")
                                         .build();
                             
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                         }
                         else if (types::builtin(name)) {
                             cdecl->annotation().type = types::unknown();
@@ -10192,7 +10263,7 @@ namespace nemesis {
                                     .note(underline->range(), "Here's the homonymous declaration, you f*cker!");
                             }
                             
-                            publisher_.publish(builder.build());
+                            publisher().publish(builder.build());
                         }
                         else {
                             // the only case in which our variable will be analyzed because there are not conflicts
@@ -10204,15 +10275,15 @@ namespace nemesis {
                 else if (auto fdecl = std::dynamic_pointer_cast<ast::function_declaration>(stmt)) {
                     std::string name = fdecl->name().lexeme().string();
                     auto other = scope_->function(name, false);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(fdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This function name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This function name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(fdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         fdecl->annotation().type = types::unknown();
@@ -10228,7 +10299,7 @@ namespace nemesis {
                                     .note(static_cast<const ast::function_declaration*>(other)->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                         scope_->function(name, fdecl.get());
@@ -10237,15 +10308,15 @@ namespace nemesis {
                 else if (auto pdecl = std::dynamic_pointer_cast<ast::property_declaration>(stmt)) {
                     std::string name = pdecl->name().lexeme().string();
                     auto other = scope_->function(name, false);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(pdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This property name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This property name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(pdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         pdecl->annotation().type = types::unknown();
@@ -10261,7 +10332,7 @@ namespace nemesis {
                                     .note(static_cast<const ast::function_declaration*>(other)->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                         scope_->function(name, pdecl.get());
@@ -10287,7 +10358,7 @@ namespace nemesis {
             }
             catch (cyclic_symbol_error& err) {
                 // recursive type error is printed
-                publisher_.publish(err.diagnostic());
+                publisher().publish(err.diagnostic());
                 // if we catch an exception then we consider type resolved, at least to minimize errors
                 // or false positives in detecting recursive cycles
                 pair.second->annotation().resolved = true;
@@ -10325,7 +10396,7 @@ namespace nemesis {
             }
             catch (cyclic_symbol_error& err) {
                 // recursive type error is printed
-                publisher_.publish(err.diagnostic());
+                publisher().publish(err.diagnostic());
                 // if we catch an exception then we consider type resolved, at least to minimize errors
                 // or false positives in detecting recursive cycles
                 pair.second->annotation().resolved = true;
@@ -10346,7 +10417,7 @@ namespace nemesis {
             }
             catch (cyclic_symbol_error& err) {
                 // recursive type error is printed
-                publisher_.publish(err.diagnostic());
+                publisher().publish(err.diagnostic());
                 // if we catch an exception then we consider type resolved, at least to minimize errors
                 // or false positives in detecting recursive cycles
                 pair.second->annotation().resolved = true;
@@ -10367,7 +10438,7 @@ namespace nemesis {
             }
             catch (cyclic_symbol_error& err) {
                 // recursive type error is printed
-                publisher_.publish(err.diagnostic());
+                publisher().publish(err.diagnostic());
                 // if we catch an exception then we consider type resolved, at least to minimize errors
                 // or false positives in detecting recursive cycles
                 pair.second->annotation().resolved = true;
@@ -10419,7 +10490,7 @@ namespace nemesis {
                                     .note(function->name().range(), diagnostic::format("Here's prototype of function `$` for behaviour `$`.", function->name().lexeme(), behaviour_decl->annotation().type->string()))
                                     .build();
                         
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                         }
                         else if (!found) {
                             // inherit original definition of prototype
@@ -10449,7 +10520,7 @@ namespace nemesis {
                                     .note(property->name().range(), diagnostic::format("Here's prototype of property `$` for behaviour `$`.", property->name().lexeme(), behaviour_decl->annotation().type->string()))
                                     .build();
                         
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                         }
                         else if (!found) {
                             // inherit original definition of prototype
@@ -10486,15 +10557,15 @@ namespace nemesis {
                 if (auto fdecl = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) {
                     std::string name = fdecl->name().lexeme().string();
                     auto other = scope_->function(name, false);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(fdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This function name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This function name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(fdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         fdecl->annotation().type = types::unknown();
@@ -10510,7 +10581,7 @@ namespace nemesis {
                                     .note(static_cast<const ast::function_declaration*>(other)->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                         scope_->function(name, fdecl.get());
@@ -10519,15 +10590,15 @@ namespace nemesis {
                 else if (auto pdecl = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) {
                     std::string name = pdecl->name().lexeme().string();
                     auto other = scope_->function(name, false);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(pdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This property name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This property name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(pdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         pdecl->annotation().type = types::unknown();
@@ -10543,7 +10614,7 @@ namespace nemesis {
                                     .note(static_cast<const ast::function_declaration*>(other)->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                         scope_->function(name, pdecl.get());
@@ -10574,15 +10645,15 @@ namespace nemesis {
                 if (auto fdecl = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) {
                     std::string name = fdecl->name().lexeme().string();
                     auto other = scope_->function(name, false);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(fdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This function name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This function name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(fdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         fdecl->annotation().type = types::unknown();
@@ -10598,7 +10669,7 @@ namespace nemesis {
                                     .note(static_cast<const ast::function_declaration*>(other)->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                         scope_->function(name, fdecl.get());
@@ -10615,7 +10686,7 @@ namespace nemesis {
                                 .highlight(fdecl->body()->range())
                                 .build();
                     
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     
                     if (fdecl->generic()) {
@@ -10629,7 +10700,7 @@ namespace nemesis {
                                 .highlight(fdecl->generic()->range())
                                 .build();
                     
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
 
                     if (fdecl->invalid()) throw semantic_error();
@@ -10772,7 +10843,7 @@ namespace nemesis {
                                 .note(other->second.range(), "Here's the homonymous field, you f*cker!")
                                 .build();
                     
-                    publisher_.publish(diag);
+                    publisher().publish(diag);
                 }
                 else {
                     names.emplace(field->name().lexeme().string(), field->name());
@@ -10828,7 +10899,7 @@ namespace nemesis {
                             .note(other->second, "Here's the same type, you f*cker!")
                             .build();
                 
-                publisher_.publish(diag);
+                publisher().publish(diag);
             }
             else {
                 map.emplace_back(t->annotation().type, t->range());
@@ -10873,64 +10944,78 @@ namespace nemesis {
 
     void checker::visit(const ast::use_declaration& decl) {}
 
-    void checker::visit(const ast::nucleus_declaration& decl) {}
+    void checker::visit(const ast::workspace_declaration& decl) {}
 
     void checker::visit(const ast::source_unit_declaration& decl) 
     {
-        // zero pass, nucleus are created inside root
+        // zero pass, workspace are created inside compilation and associated to their correspective packages
         if (pass_ == pass::zero) {
-            if (auto ndecl = std::dynamic_pointer_cast<ast::nucleus_declaration>(decl.nucleus())) {
-                std::string name = ndecl->path().lexeme().string();
-                auto result = root_.find(name);
-                
-                if (result == root_.end()) {
-                    auto nucleus = ast::create<ast::nucleus>(name);
-                    nucleus->type = types::nucleus();
-                    nucleus->type->declaration(nucleus.get());
-                    nucleus->sources.emplace(file_->name().string(), file_);
-                    nucleus->builtin = file_->builtin();
-                    root_.emplace(name, nucleus);
-                    decl.annotation().nucleus = nucleus.get();
+            // two scenarios
+            // 1) current file has a workspace declaration
+            //    a) if workspace is already declared, then we checks that it resides in the same physical package
+            //       i) if so, correct, then we add this source file to the existing workspace
+            //       ii) otherwise, violation (workspaces must resides in only one package and cannot be shared among them), so abort
+            //    b) workspace does not exists, so we create it, we add this source file and add the workspace to current package
+            // 2) current file is anoymous, which means it has no workspace relationship, so an anonymous (random name) workspace is created,
+            //    current file is added to the latter and the worskspace is silently added to current package
+            if (auto wdecl = std::dynamic_pointer_cast<ast::workspace_declaration>(decl.workspace())) {
+                std::string name = wdecl->path().lexeme().string();
+                auto result = compilation_.workspaces().find(name);
+                // if workspace does not exist, it is created and associated to current package
+                if (result == compilation_.workspaces().end()) {
+                    auto workspace = ast::create<ast::workspace>(name, package_);
+                    workspace->type = types::workspace();
+                    workspace->type->declaration(workspace.get());
+                    workspace->sources.emplace(file_->name().string(), file_);
+                    compilation_.workspaces().emplace(name, workspace);
+                    decl.annotation().workspace = workspace.get();
                 }
-                else {
-                    result->second->sources.emplace(file_->name().string(), file_);
-                    decl.annotation().nucleus = result->second.get();
-                }
-
-                if (decl.annotation().nucleus->builtin && !file_->builtin()) {
-                    // such a violation is punished by skipping the whole file from analysis
-                    decl.annotation().nucleus->sources.erase(file_->name().string());
-                    report(ndecl->path().range(), diagnostic::format("How dare you extend builtin nucleus `$` in your file, idot?!", decl.annotation().nucleus->name), "You must know that builtin nucleus cannot be extended outside standard library files.", "invalid");
-                    handler_.remove(file_->name());
+                // otherwise it checks referenced workspace resides in the same package as its workspace declarator
+                else if (result->second->package != package_) {
+                    report(wdecl->path().range(), diagnostic::format("How dare you extend workspace `$` outside its package `$`?! You just can't, idiot.", name, result->second->package));
+                    // such a violation is punished by skipping the whole file from analysis and aborting analysis
+                    result->second->sources.erase(file_->name().string());
+                    compilation_.get_source_handler().remove(file_->name());
                     throw abort_error();
                 }
+                // workspace exists and resides in this package, correct
+                else {
+                    result->second->sources.emplace(file_->name().string(), file_);
+                    decl.annotation().workspace = result->second.get();
+                }
             }
+            // workspace is anonymous, so its definitions cannot be exported, so it is silently added to current package
             else {
                 auto name = "__" + std::to_string(std::hash<utf8::span>()(file_->name()));
-                auto nucleus = ast::create<ast::nucleus>(name);
-                nucleus->type = types::nucleus();
-                nucleus->type->declaration(nucleus.get());
-                nucleus->sources.emplace(file_->name().string(), file_);
-                nucleus->builtin = file_->builtin();
-                root_.emplace(name, nucleus);
-                decl.annotation().nucleus = nucleus.get();
+                auto workspace = ast::create<ast::workspace>(name, package_);
+                workspace->type = types::workspace();
+                workspace->type->declaration(workspace.get());
+                workspace->sources.emplace(file_->name().string(), file_);
+                compilation_.workspaces().emplace(name, workspace);
+                decl.annotation().workspace = workspace.get();
             }
         }
-        // first pass, only type, constant, variable, function declarations names are registered for forward definitions
+        // first pass is useful to register declarations' names for forward definitions, so we can
+        // already find conflicts in each workspace since top-level declarations are pushed into their
+        // correspective workspace, declarations' names are
+        // i) types
+        // ii) constants
+        // iii) variables
+        // iv) functions (even extern functions)
         else if (pass_ == pass::first) {
             for (ast::pointer<ast::node> stmt : decl.statements()) {
                 if (auto tdecl = std::dynamic_pointer_cast<ast::type_declaration>(stmt)) try {
                     std::string name = tdecl->name().lexeme().string();
                     auto other = scope_->type(name);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(tdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This type name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This type name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(tdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         tdecl->annotation().type = types::unknown();
@@ -10946,7 +11031,7 @@ namespace nemesis {
                                     .note(other->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                        scope_->type(name, tdecl.get());
@@ -10956,15 +11041,15 @@ namespace nemesis {
                 else if (auto cdecl = std::dynamic_pointer_cast<ast::concept_declaration>(stmt)) try {
                     std::string name = cdecl->name().lexeme().string();
                     auto other = scope_->concept(name);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(tdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This concept name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This concept name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(cdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         error(tdecl->name().range(), diagnostic::format("You cannot steal primitive type name `$` to create your concept, idiot!", name));
@@ -10978,7 +11063,7 @@ namespace nemesis {
                                     .note(other->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                        scope_->concept(name, cdecl.get());
@@ -10988,15 +11073,15 @@ namespace nemesis {
                 else if (auto cdecl = std::dynamic_pointer_cast<ast::const_declaration>(stmt)) try {
                     std::string name = cdecl->name().lexeme().string();
                     auto other = scope_->value(name);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(cdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This constant name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This constant name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(cdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         cdecl->annotation().type = types::unknown();
@@ -11028,7 +11113,7 @@ namespace nemesis {
                                 .note(underline->range(), "Here's the homonymous declaration, you f*cker!");
                         }
                         
-                        publisher_.publish(builder.build());
+                        publisher().publish(builder.build());
                     }
                     else {
                         scope_->value(name, cdecl.get());
@@ -11042,15 +11127,15 @@ namespace nemesis {
                         // variable declaration is marked as erraneous by default
                         cdecl->invalid(true);
                         
-                        if (nucleus() && nucleus()->name == name) {
+                        if (workspace()->name == name) {
                             auto diag = diagnostic::builder()
                                         .location(id.location())
                                         .severity(diagnostic::severity::error)
-                                        .message(diagnostic::format("This constant name conflicts with nucleus name `$`, c*nt!", name))
+                                        .message(diagnostic::format("This constant name conflicts with workspace name `$`, c*nt!", name))
                                         .highlight(id.range(), "conflicting")
                                         .build();
                             
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                         }
                         else if (types::builtin(name)) {
                             cdecl->annotation().type = types::unknown();
@@ -11082,7 +11167,7 @@ namespace nemesis {
                                     .note(underline->range(), "Here's the homonymous declaration, you f*cker!");
                             }
                             
-                            publisher_.publish(builder.build());
+                            publisher().publish(builder.build());
                         }
                         else {
                             // the only case in which our variable will be analyzed because there are not conflicts
@@ -11098,15 +11183,15 @@ namespace nemesis {
                     // variable declaration is marked as erraneous by default
                     vdecl->invalid(true);
                     
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(vdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This variable name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This variable name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(vdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         vdecl->annotation().type = types::unknown();
@@ -11138,7 +11223,7 @@ namespace nemesis {
                                 .note(underline->range(), "Here's the homonymous declaration, you f*cker!");
                         }
                         
-                        publisher_.publish(builder.build());
+                        publisher().publish(builder.build());
                     }
                     else {
                         // the only case in which our variable will be analyzed because there are not conflicts
@@ -11154,15 +11239,15 @@ namespace nemesis {
                         // variable declaration is marked as erraneous by default
                         vdecl->invalid(true);
                         
-                        if (nucleus() && nucleus()->name == name) {
+                        if (workspace()->name == name) {
                             auto diag = diagnostic::builder()
                                         .location(id.location())
                                         .severity(diagnostic::severity::error)
-                                        .message(diagnostic::format("This variable name conflicts with nucleus name `$`, c*nt!", name))
+                                        .message(diagnostic::format("This variable name conflicts with workspace name `$`, c*nt!", name))
                                         .highlight(id.range(), "conflicting")
                                         .build();
                             
-                            publisher_.publish(diag);
+                            publisher().publish(diag);
                         }
                         else if (types::builtin(name)) {
                             vdecl->annotation().type = types::unknown();
@@ -11194,7 +11279,7 @@ namespace nemesis {
                                     .note(underline->range(), "Here's the homonymous declaration, you f*cker!");
                             }
                             
-                            publisher_.publish(builder.build());
+                            publisher().publish(builder.build());
                         }
                         else {
                             // the only case in which our variable will be analyzed because there are not conflicts
@@ -11207,15 +11292,15 @@ namespace nemesis {
                 else if (auto fdecl = std::dynamic_pointer_cast<ast::function_declaration>(stmt)) try {
                     std::string name = fdecl->name().lexeme().string();
                     auto other = scope_->function(name);
-                    if (nucleus() && nucleus()->name == name) {
+                    if (workspace()->name == name) {
                         auto diag = diagnostic::builder()
                                     .location(fdecl->name().location())
                                     .severity(diagnostic::severity::error)
-                                    .message(diagnostic::format("This function name conflicts with nucleus name `$`, c*nt!", name))
+                                    .message(diagnostic::format("This function name conflicts with workspace name `$`, c*nt!", name))
                                     .highlight(fdecl->name().range(), "conflicting")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else if (types::builtin(name)) {
                         fdecl->annotation().type = types::unknown();
@@ -11231,7 +11316,7 @@ namespace nemesis {
                                     .note(static_cast<const ast::function_declaration*>(other)->name().range(), "Here's the homonymous declaration, you f*cker!")
                                     .build();
                         
-                        publisher_.publish(diag);
+                        publisher().publish(diag);
                     }
                     else {
                         scope_->function(name, fdecl.get());
@@ -11246,7 +11331,7 @@ namespace nemesis {
                                         .note(entry_point_->name().range(), "Here's the other entry point, you f*cker!")
                                         .build();
                         
-                                publisher_.publish(diag);
+                                publisher().publish(diag);
                             }
                             else entry_point_ = fdecl.get();
                         }
@@ -11259,9 +11344,8 @@ namespace nemesis {
                 catch (semantic_error& err) {}
             }
         }
-        // in second pass extend are traversed to register nested names for types, costants, functions
-        // extended types are fully resolved in other to add nested declarations to their namespaces
-        // and even inside concepts
+        // second pass, type extension are traversed to register nested names for types, costants, functions
+        // extended types are fully resolved in other to add nested declarations to their namespaces and even inside concepts
         else if (pass_ == pass::second) {
             auto saved = scope_;
             // first generic extension are traversed
@@ -11314,11 +11398,11 @@ namespace nemesis {
                 catch (semantic_error& err) { scope_ = saved; }
             }
         }
-        // fourth pass is used to check all others statements including
-        // functions
-        // tests
-        // extern blocks
-        // variables
+        // fourth and last pass, used to fully check remaining statements, which are
+        // i) variables
+        // ii) constants
+        // iii) functions
+        // iv) tests 
         else {
             auto saved = scope_;
             for (ast::pointer<ast::node> stmt : decl.statements()) {
@@ -11331,7 +11415,7 @@ namespace nemesis {
                 catch (semantic_error& err) { scope_ = saved; }
             }
 
-            // adds all pending and artificial insertion inside the ast because before it would have invalidate the AST (std::vector)
+            // adds all pending and artificial insertion inside the ast because before it would have invalidate the tree (std::vector<ast::statement>)
             while (!pending_insertions.empty()) {
                 add_to_scope(std::get<0>(pending_insertions.front()), std::get<1>(pending_insertions.front()), std::get<2>(pending_insertions.front()));
                 pending_insertions.pop_front();
@@ -11339,60 +11423,90 @@ namespace nemesis {
         }
     }
 
-    void checker::check() try {
-        // registration for each nucleus
+    void checker::Check() try {
+        // pass zero
         pass_ = pass::zero;
-
-        for (auto pair : handler_.sources()) {
-            file_ = pair.second;
-            file_->ast()->accept(*this);
+        // each source file is associated to a workspace, and each workspace (which are namespaces)
+        // is associated to only one package
+        // it would be good pratice that one package contains only one workspace and their name corresponds
+        for (auto dependency : compilation_.dependencies()) {
+            // sets current package
+            package_ = dependency.name;
+            // traverse each source file for each package
+            for (auto source : dependency.sources) {
+                // sets current source file
+                file_ = source;
+                source->ast()->accept(*this);
+            }
         }
-        
-        // global type declarations for each nucleus on each AST
+        // current package as last package to check
+        package_ = compilation_.current().name;
+        // traverse each source file of current package
+        for (auto source : compilation_.current().sources) {
+            // sets current source file
+            file_ = source;
+            source->ast()->accept(*this);
+        }
+        // first pass
         pass_ = pass::first;
-        // imports are performed in each nucleus
+        // all `use` directives are analyzed importing symbols from one workspace to another
+        // this is possible between a package and another when one its a dependency of the other,
+        // so all public definitions may be exported in the other workspace
         do_imports();
-        // first traversal for registering toplevel type names and costant names
-        for (auto nucleus : root_) {
-            // nucleus scope
-            struct scope scope(this, nucleus.second.get());
-            // each source file of the nucleus is traversed
-            for (auto pair : nucleus.second->sources) {
+        // for each workspace are registered names of
+        // i) types
+        // ii) variables
+        // iii) constants
+        // iv) functions (even extern functions)
+        for (auto workspace : compilation_.workspaces()) {
+            // workspace scope
+            struct scope scope(this, workspace.second.get());
+            // sets current package
+            package_ = workspace.second->package;
+            // each source file belonging to a workspace is traversed
+            for (auto pair : workspace.second->sources) {
+                // sets current file
                 file_ = pair.second;
                 file_->ast()->accept(*this);
             }
         }
-
+        // second pass
         pass_ = pass::second;
-        // second traversal for visiting extend blocks recursively
-        // and registering just names for nested types and costants
-        for (auto nucleus : root_) {
-            // nucleus scope
-            struct scope scope(this, nucleus.second.get());
-            // each source file of the nucleus is traversed
-            for (auto pair : nucleus.second->sources) {
+        // for each workspace, type extension block are visited, so
+        // i) extended type are resolved
+        // ii) associated types and constants' names are registered
+        for (auto workspace : compilation_.workspaces()) {
+            // workspace scope
+            struct scope scope(this, workspace.second.get());
+            // sets current package
+            package_ = workspace.second->package;
+            // each source file belonging to a workspace is traversed
+            for (auto pair : workspace.second->sources) {
+                // sets current file
                 file_ = pair.second;
                 file_->ast()->accept(*this);
             }
         }
-
-        // all builtin symbol are imported in each nucleus to avoid using dot notation which is long
-        import_builtin_symbols();
-
+        // for simplicity all name definitions from `core` library don't need to be explicitly imported and referenced with `core` for all other workspaces
+        import_core_library_in_workspaces();
+        // third pass
         pass_ = pass::third;
-        // types are fully constructed
-        for (auto nucleus : root_) {
-            // nucleus scope
-            struct scope scope(this, nucleus.second.get());
+        // for each workspace remaining types are fully constructed
+        for (auto workspace : compilation_.workspaces()) {
+            // workspace scope
+            struct scope scope(this, workspace.second.get());
+            // sets current package
+            package_ = workspace.second->package;
+            // save current scope for restoring
             auto saved = scope_;
-            // all nucleus types are fully checked
+            // all workspace types are fully checked
             for (auto pair : scope_->types()) try {
                 // if not resolved then the type is traversed
-                if (!pair.second->annotation().visited && nucleus.second.get() == scopes_.at(pair.second->annotation().scope)->outscope(environment::kind::nucleus)) pair.second->accept(*this);
+                if (!pair.second->annotation().visited && workspace.second.get() == scopes_.at(pair.second->annotation().scope)->outscope(environment::kind::workspace)) pair.second->accept(*this);
             }
             catch (cyclic_symbol_error& err) {
                 // recursive type error is printed
-                publisher_.publish(err.diagnostic());
+                publisher().publish(err.diagnostic());
                 // if we catch an exception then we consider type resolved, at least to minimize errors
                 // or false positives in detecting recursive cycles
                 pair.second->annotation().resolved = true;
@@ -11406,16 +11520,16 @@ namespace nemesis {
                 // restore scope
                 scope_ = saved;
             }
-            // all nucleus constants are fully checked
+            // all workspace constants are fully checked
             for (auto pair : scope_->values()) try {
-                // variables are analyzed later
-                if (dynamic_cast<const ast::var_declaration*>(pair.second) || dynamic_cast<const ast::var_tupled_declaration*>(pair.second)) continue;
-                // if not resolved then the type is traversed
-                if (!pair.second->annotation().visited && nucleus.second.get() == scopes_.at(pair.second->annotation().scope)->outscope(environment::kind::nucleus)) pair.second->accept(*this);
+                // variables are analyzed later, after resolution of constants
+                if (pair.second->kind() == ast::kind::var_declaration || pair.second->kind() == ast::kind::var_tupled_declaration) continue;
+                // if not resolved then the constant is traversed
+                if (!pair.second->annotation().visited && workspace.second.get() == scopes_.at(pair.second->annotation().scope)->outscope(environment::kind::workspace)) pair.second->accept(*this);
             }
             catch (cyclic_symbol_error& err) {
-                // recursive type error is printed
-                publisher_.publish(err.diagnostic());
+                // recursive constant error is printed
+                publisher().publish(err.diagnostic());
                 // if we catch an exception then we consider type resolved, at least to minimize errors
                 // or false positives in detecting recursive cycles
                 pair.second->annotation().resolved = true;
@@ -11423,20 +11537,20 @@ namespace nemesis {
                 scope_ = saved;
             }
             catch (semantic_error& err) {
-                // if we catch an exception then we consider type resolved, at least to minimize errors
+                // if we catch an exception then we consider constant resolved, at least to minimize errors
                 // or false positives in detecting recursive cycles
                 pair.second->annotation().resolved = true;
                 // restore scope
                 scope_ = saved;
             }
-            // all nucleus concepts are fully checked
+            // all workspace concepts are fully checked
             for (auto pair : scope_->concepts()) try {
                 // if not resolved then the type is traversed
-                if (!pair.second->annotation().visited && nucleus.second.get() == scopes_.at(pair.second->annotation().scope)->outscope(environment::kind::nucleus)) pair.second->accept(*this);
+                if (!pair.second->annotation().visited && workspace.second.get() == scopes_.at(pair.second->annotation().scope)->outscope(environment::kind::workspace)) pair.second->accept(*this);
             }
             catch (cyclic_symbol_error& err) {
                 // recursive concept error is printed
-                publisher_.publish(err.diagnostic());
+                publisher().publish(err.diagnostic());
                 // if we catch an exception then we consider concept resolved, at least to minimize errors
                 // or false positives in detecting recursive cycles
                 pair.second->annotation().resolved = true;
@@ -11451,36 +11565,52 @@ namespace nemesis {
                 scope_ = saved;
             }
         }
-        // extend blocks are fully traversed to construct
-        // nested types and constants
-        for (auto pair : handler_.sources()) {
-            // nucleus scope of current source file
-            struct scope scope(this, nucleus_of_file(pair.first.string()));
-            file_ = pair.second;
-            pair.second->ast()->accept(*this);
+        // type extension block in each workspace are fully traversed to construct all previously registered constants and types' names
+        for (auto workspace : compilation_.workspaces()) {
+            // sets current package
+            package_ = workspace.second->package;
+            // workspace scope
+            struct scope scope(this, workspace.second.get());
+            // for each source file belonging to the current workspace
+            for (auto pair : workspace.second->sources) {
+                // sets current file
+                file_ = pair.second;
+                pair.second->ast()->accept(*this);
+            }   
         }
-        // remove variables names to avoid conflicts
-        for (auto nucleus : root_) {
-            struct scope scope(this, nucleus.second.get());
+        // for each workspace remove variables names to avoid conflicts
+        for (auto workspace : compilation_.workspaces()) {
+            // sets current package
+            package_ = workspace.second->package;
+            // workspace scope
+            struct scope scope(this, workspace.second.get());
+            // remove all variables from scope
             std::set<std::string> vars_to_remove;
             for (auto pair : scope_->values()) if (dynamic_cast<const ast::var_declaration*>(pair.second) || dynamic_cast<const ast::var_tupled_declaration*>(pair.second)) vars_to_remove.insert(pair.first);
             for (auto var : vars_to_remove) scope_->values().erase(var);
         }
-        // all left statements are checked on each AST
-        // variables
-        // constants
-        // functions
+        // fourth and last pass, used to fully check remaining statements, which are
+        // i) variables
+        // ii) constants
+        // iii) functions
+        // iv) tests 
         pass_ = pass::fourth;
-
-        for (auto pair : handler_.sources()) {
-            // nucleus scope of current source file
-            struct scope scope(this, nucleus_of_file(pair.first.string()));
-            file_ = pair.second;
-            pair.second->ast()->accept(*this);
+        // for each workspace it fully checks remaining statements
+        for (auto workspace : compilation_.workspaces()) {
+            // sets current package
+            package_ = workspace.second->package;
+            // workspace scope
+            struct scope scope(this, workspace.second.get());
+            // for each source file belonging to the current workspace
+            for (auto pair : workspace.second->sources) {
+                // sets current file
+                file_ = pair.second;
+                pair.second->ast()->accept(*this);
+            }   
         }
     }
     catch (abort_error&) {}
-    
+
     void substitutions::substitute() { root_->accept(*this); }
 
     void substitutions::visit(const ast::bit_field_type_expression& expr) {}
@@ -11825,7 +11955,7 @@ namespace nemesis {
     
     void substitutions::visit(const ast::use_declaration& decl) {}
     
-    void substitutions::visit(const ast::nucleus_declaration& decl) {}
+    void substitutions::visit(const ast::workspace_declaration& decl) {}
     
     void substitutions::visit(const ast::source_unit_declaration& decl) {}
 }

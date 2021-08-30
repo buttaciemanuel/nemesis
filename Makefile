@@ -1,13 +1,14 @@
 CC=clang++
-FLAGS=-std=c++14 -ggdb3 -Wall -pedantic-errors -D __NEMESIS_COLORIZE__=1
+FLAGS=-std=c++17 -ggdb3 -Wall -pedantic-errors -D __NEMESIS_COLORIZE__=1
 INCLUDE=include
-SOURCES=src/driver.cpp src/diagnostic.cpp src/source.cpp src/span.cpp src/token.cpp src/tokenizer.cpp src/ast.cpp src/parser.cpp src/type.cpp src/checker.cpp src/evaluator.cpp src/pattern_matcher.cpp src/type_matcher.cpp src/code_generator.cpp
-OBJECTS=build/driver.o build/diagnostic.o build/source.o build/span.o build/token.o build/tokenizer.o build/ast.o build/parser.o build/type.o build/checker.o build/evaluator.o build/pattern_matcher.o build/type_matcher.o build/code_generator.o
+SOURCES=src/driver.cpp src/diagnostic.cpp src/source.cpp src/span.cpp src/token.cpp src/tokenizer.cpp src/ast.cpp src/parser.cpp src/type.cpp src/checker.cpp src/evaluator.cpp src/pattern_matcher.cpp src/type_matcher.cpp src/code_generator.cpp src/pm.cpp
+OBJECTS=build/driver.o build/diagnostic.o build/source.o build/span.o build/token.o build/tokenizer.o build/ast.o build/parser.o build/type.o build/checker.o build/evaluator.o build/pattern_matcher.o build/type_matcher.o build/code_generator.o build/pm.o
+LIBS=-lzip
 
-build/driver: $(OBJECTS) $(LIBS)
-	$(CC) $(FLAGS) $(OBJECTS) -o build/driver
+build/driver: $(OBJECTS)
+	$(CC) $(FLAGS) $(OBJECTS) -o build/driver $(LIBS)
 
-build/driver.o: src/driver.cpp $(INCLUDE)/nemesis/driver/driver.hpp
+build/driver.o: src/driver.cpp $(INCLUDE)/nemesis/driver/*.hpp
 	$(CC) $(FLAGS) -I $(INCLUDE) -c src/driver.cpp -o build/driver.o
 
 build/diagnostic.o: src/diagnostic.cpp $(INCLUDE)/nemesis/diagnostics/*.hpp
@@ -48,6 +49,9 @@ build/type_matcher.o: src/type_matcher.cpp $(INCLUDE)/nemesis/analysis/*.hpp
 
 build/code_generator.o: src/code_generator.cpp $(INCLUDE)/nemesis/codegen/*.hpp
 	$(CC) $(FLAGS) -I $(INCLUDE) -c src/code_generator.cpp -o build/code_generator.o
+
+build/pm.o: src/pm.cpp $(INCLUDE)/nemesis/pm/*.hpp
+	$(CC) $(FLAGS) -I $(INCLUDE) -c src/pm.cpp -o build/pm.o
 
 clean:
 	rm -rf build/*

@@ -42,6 +42,8 @@ namespace nemesis {
             imag_literal,
             /** single-line or multi-line comment */
             comment,
+            /** 'app' **/
+            app_kw,
             /** 'as' **/
             as_kw,
             /** 'behaviour' */
@@ -80,8 +82,8 @@ namespace nemesis {
             is_kw,
             /** 'mutable' */
             mutable_kw,
-            /** 'nucleus' */
-            nucleus_kw,
+            /** 'lib' */
+            lib_kw,
             /** `range` */
             range_kw,
             /** 'require' */

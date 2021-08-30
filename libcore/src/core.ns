@@ -1,4 +1,4 @@
-nucleus nscore
+lib core
 
 // prints a string on the console
 println(s: string) {}

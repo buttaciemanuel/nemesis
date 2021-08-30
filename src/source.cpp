@@ -137,6 +137,25 @@ namespace nemesis {
 
     void source_file::ast(std::shared_ptr<ast::node> ast) { ast_ = ast; }
 
+    bool source_file::has_type(filetype type) const
+    {
+        auto name = name_.string();
+        auto extension = name.substr(name.find_last_of('.') + 1);
+        
+        switch (type) {
+            case filetype::header:
+                return extension == "h" || extension == "hpp";
+            case filetype::cpp:
+                return extension == "cpp" || extension == "cxx" || extension == "cc";
+            case filetype::nemesis:
+                return extension == "ns";
+            default:
+                break;
+        }
+
+        return true;
+    }
+
     source_handler& source_handler::instance()
     {
         static source_handler handler;
@@ -169,7 +188,8 @@ namespace nemesis {
 
         stream.close();
 
-        files_.emplace(filename, source);
+        if (source->has_type(source_file::filetype::cpp) || source->has_type(source_file::filetype::header)) cpp_files_.emplace(filename, source);
+        else if (source->has_type(source_file::filetype::nemesis)) files_.emplace(filename, source);
 
         return true;
     }
@@ -178,7 +198,8 @@ namespace nemesis {
     {
         auto res = files_.find(filename);
         if (res == files_.end()) {
-            throw std::invalid_argument("source_handler::remove(): file is not owned by source handler");
+            res = cpp_files_.find(filename);
+            if (res == cpp_files_.end()) throw std::invalid_argument("source_handler::get(): file is not owned by source handler");
         }
 
         delete res->second;
@@ -189,13 +210,16 @@ namespace nemesis {
     {
         auto res = files_.find(filename);
         if (res == files_.end()) {
-            throw std::invalid_argument("source_handler::get(): file is not owned by source handler");
+            res = cpp_files_.find(filename);
+            if (res == cpp_files_.end()) throw std::invalid_argument("source_handler::get(): file is not owned by source handler");
         }
 
         return *(res->second);
     }
 
     const std::unordered_map<utf8::span, source_file*>& source_handler::sources() const { return files_; }
+
+    const std::unordered_map<utf8::span, source_file*>& source_handler::cppsources() const { return cpp_files_; }
 }
 
 std::ostream& operator<<(std::ostream& os, nemesis::source_location loc)

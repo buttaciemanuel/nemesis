@@ -10,7 +10,7 @@
 #include <sys/ioctl.h>
 #endif 
 
-#define __NEMESIS_DIAGNOSTIC_EXPLANATION__ 0
+#define __NEMESIS_DIAGNOSTIC_EXPLANATION__ 1
 
 namespace nemesis {
     diagnostic::builder& diagnostic::builder::severity(enum severity severity)

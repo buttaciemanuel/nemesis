@@ -8,7 +8,7 @@
 namespace nemesis {
     class environment {
     public:
-        enum class kind { nucleus, global, function, test, block, loop, declaration };
+        enum class kind { workspace, global, function, test, block, loop, declaration };
 
         environment(const ast::node* enclosing, environment* parent = nullptr);
         const ast::node* enclosing() const { return enclosing_; }
@@ -62,7 +62,7 @@ namespace nemesis {
         {
             auto scope = this;
             do {
-                if (auto n = dynamic_cast<const ast::nucleus*>(scope->enclosing_)) std::cout << "|\n" << n->name << '\n';
+                if (auto n = dynamic_cast<const ast::workspace*>(scope->enclosing_)) std::cout << "|\n" << n->name << '\n';
                 else if (auto d = dynamic_cast<const ast::declaration*>(scope->enclosing_)) std::cout << "|\n" << ast::printer().print(*d) << '\n';
                 else if (auto n = dynamic_cast<const ast::statement*>(scope->enclosing_)) std::cout << "|\n" << ast::printer().print(*n) << '\n';
                 else if (auto e = dynamic_cast<const ast::expression*>(scope->enclosing_)) std::cout << "|\n" << ast::printer().print(*e) << '\n';

@@ -60,7 +60,7 @@ namespace nemesis {
                 variant_type,
                 behaviour_type,
                 generic_type,
-                nucleus_type,
+                workspace_type,
                 unknown_type
             };
             virtual enum category category() const = 0;
@@ -108,12 +108,12 @@ namespace nemesis {
             enum category category() const { return category::unknown_type; }
         };
 
-        class nucleus_type : public type {
+        class workspace_type : public type {
         public:
-            nucleus_type() : type() {}
-            ~nucleus_type() {}
-            std::string string(bool absolute = true) const { return static_cast<const ast::nucleus*>(declaration_)->name; }
-            enum category category() const { return category::nucleus_type; }
+            workspace_type() : type() {}
+            ~workspace_type() {}
+            std::string string(bool absolute = true) const { return static_cast<const ast::workspace*>(declaration_)->name; }
+            enum category category() const { return category::workspace_type; }
             ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const { return before; }
         };
 
@@ -547,7 +547,7 @@ namespace nemesis {
         types() = delete;
         static ast::pointer<ast::type> builtin(std::string name);
         static ast::pointer<ast::unknown_type> unknown();
-        static ast::pointer<ast::nucleus_type> nucleus();
+        static ast::pointer<ast::workspace_type> workspace();
         static ast::pointer<ast::generic_type> generic();
         static ast::pointer<ast::integer_type> bitfield(unsigned bits);
         static ast::pointer<ast::tuple_type> unit();

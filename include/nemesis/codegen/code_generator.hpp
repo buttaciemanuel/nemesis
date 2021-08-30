@@ -1,18 +1,15 @@
 #ifndef CODE_GENERATOR_HPP
 #define CODE_GENERATOR_HPP
 
-#include "nemesis/analysis/type.hpp"
-#include "nemesis/driver/compilation.hpp"
+#include "nemesis/analysis/checker.hpp"
 
 namespace nemesis {
     class code_generator : public ast::visitor {
     public:
-        enum class kind { C, CPP };
-
-        code_generator(std::unordered_map<std::string, ast::pointer<ast::nucleus>>& units, std::unordered_map<const ast::node*, environment*> scopes, diagnostic_publisher& publisher, enum kind k = kind::CPP);
+        code_generator(checker& checker);
         ~code_generator();
-        compilation generate();
-        enum kind kind() const;
+        // compiles source files and generates cpp target source files
+        std::list<Compilation::target> generate();
         void set_entry_point(const ast::function_declaration* decl);
         const ast::function_declaration* entry_point() const;
         void trace(bool flag);
@@ -106,33 +103,17 @@ namespace nemesis {
         void visit(const ast::record_declaration& decl);
         void visit(const ast::variant_declaration& decl);
         /**
-         * Root for all analyzed nucleuses
+         * Semantic checker contains all information produced by previous analysis
          */
-        std::unordered_map<std::string, ast::pointer<ast::nucleus>>& units_;
+        checker& checker_;
         /**
-         * Scopes
+         * Current workspace, used to generate name of current compilation unit for name mangling
          */
-        std::unordered_map<const ast::node*, environment*> scopes_;
-        /**
-         * Diagnostic publisher for errors, warnings or notes
-         */
-        diagnostic_publisher& publisher_;
-        /**
-         * Output language type, by default C++
-         */
-        enum kind kind_;
-        /**
-         * Current nucleus
-         */
-        ast::pointer<ast::nucleus> nucleus_ = nullptr;
+        ast::pointer<ast::workspace> workspace_ = nullptr;
         /**
          * Current output file stream
          */
         filestream output_;
-        /**
-         * Entry point for execution
-         */
-        const ast::function_declaration* entry_point_ = nullptr;
         /**
          * Stack of variables to be assigned from scopes, for example
          * 'val a = if true { "ok" } else { "damn" }'
@@ -141,7 +122,8 @@ namespace nemesis {
          */
         std::stack<std::string> result_vars;
         /**
-         * Back tracing mode
+         * Back tracing mode, slower
+         * Not set by default to speed up the application
          */
         bool trace_ = false;
     };

@@ -7,61 +7,74 @@
 #include "nemesis/analysis/evaluator.hpp"
 
 namespace nemesis {
-    code_generator::code_generator(std::unordered_map<std::string, ast::pointer<ast::nucleus>>& units, std::unordered_map<const ast::node*, environment*> scopes, diagnostic_publisher& publisher, enum kind k) : 
-        units_(units),
-        scopes_(scopes),
-        publisher_(publisher),
-        kind_(k)
-    {}
+    code_generator::code_generator(checker& checker) : checker_(checker) {}
 
     code_generator::~code_generator() {}
     
-    compilation code_generator::generate()
+    std::list<Compilation::target> code_generator::generate()
     {
-        compilation compilation(publisher_);
-        // for each nucleus it generates an output file (C or C++)
-        for (auto unit : units_) {
-            // if unit is builtin then its code is loaded though standard library files
-            if (unit.second->builtin) {
-                compilation.builtin("libns/nscore/" + unit.first + ".cpp");
-                continue;
+        // cpp target files
+        std::list<Compilation::target> targets;
+        // public header will contains all public declarations and headers from `cpp` directories
+        filestream exported("__exported.h");
+        // adds all `src` header files (.h, .hpp)
+        for (auto package : checker_.compilation().packages()) {
+            // include headers from `src` directory
+            for (auto cpp : package.second.cpp_sources) {
+                // if extension is '.h' or '.hpp' then file is included
+                if (cpp->has_type(source_file::filetype::header)) exported.stream() << "#include \"" << cpp->name() << "\"\n";
             }
-            // otherwise code is generated
-            new (&output_) filestream(unit.first);
-            // sets current nucleus
-            nucleus_ = unit.second;
-            // write header and info
-            output_.stream() << "/* Compiled version of nucleus '" << unit.first << "' in language " << (kind_ == kind::CPP ? "C++" : "C") << " */\n";
-            // imports definitions from standard library 'nscore'
-            output_.stream() << "#include \"../libns/nscore/nscore.h\"\n";
-            // forward type declarations
-            output_.stream() << "/* Forward type declarations */\n";
-            for (auto type : unit.second->types) {
-                if (auto typedecl = dynamic_cast<const ast::type_declaration*>(type->declaration())) output_.stream() << prototype(typedecl) << ";\n";
-                else output_.stream() << "struct " << emit(type) << ";\n";
+        }
+        // all exported declarations are added to a standard header file
+        for (auto workspace : checker_.compilation().workspaces()) {
+            exported.stream() << "/* Forward declarations from workspace '" << workspace.first << "' */\n";
+            // if package associated to current workspace is builtin, then workspace is not compiled
+            if (!checker_.compilation().package(workspace.second->package).builtin) {
+                // sets current library
+                workspace_ = workspace.second;
+                // forward type declarations
+                for (auto type : workspace.second->types) {
+                    if (auto typedecl = dynamic_cast<const ast::type_declaration*>(type->declaration())) exported.stream() << prototype(typedecl) << ";\n";
+                    else exported.stream() << "struct " << emit(type) << ";\n";
+                }
+                // forward function declarations
+                for (auto fndecl : workspace.second->functions) if (!fndecl->generic()) exported.stream() << prototype(fndecl) << ";\n";
             }
-            // forward function declarations
-            output_.stream() << "/* Forward function declarations */\n";
-            for (auto fndecl : unit.second->functions) if (!fndecl->generic()) output_.stream() << prototype(fndecl) << ";\n";
+        }
+        // adds exported header file to targets
+        targets.push_front({ "__exported.h", exported.stream().str(), true });
+
+        std::cout << "--- __exported.h ---\n" << exported.stream().str() << '\n';
+
+        // for each workspace it generates a new C++ file to compile if workspace's package is not set as builtin
+        for (auto workspace : checker_.compilation().workspaces()) {
+            // whenever we encounter a builtin package then we skip its workspaces' code generation
+            if (checker_.compilation().package(workspace.second->package).builtin) continue;
+            // target name
+            std::string target = workspace.first + ".cpp";
+            // constructs a new file stream
+            new (&output_) filestream(target);
+            // include public header
+            output_.stream() << "#include \"__exported.h\"\n";
             // emits all type declarations inside each file
             output_.stream() << "/* Type definitions */\n";
-            for (auto type : unit.second->types) {
+            for (auto type : workspace.second->types) {
                 if (auto typedecl = dynamic_cast<const ast::type_declaration*>(type->declaration())) typedecl->accept(*this);
                 else emit_anonymous_type(type);
             }
-            // Global variables definitions
+            // global variables definitions
             output_.stream() << "/* Variable and constants definitions */\n";
-            for (auto valuedecl : unit.second->globals) valuedecl->accept(*this);
+            for (auto valuedecl : workspace.second->globals) valuedecl->accept(*this);
             // function definitions
             output_.stream() << "/* Function definitions */\n";
-            for (auto fndecl : unit.second->functions) if (!fndecl->generic()) fndecl->accept(*this);
-            // file output
-            compilation.source("examples/" + unit.first + ".cpp", output_.stream().str());
-            
-            std::cout << "---" << unit.first << ".cpp---\n" << output_.stream().str() << '\n';
-        }
+            for (auto fndecl : workspace.second->functions) if (!fndecl->generic()) fndecl->accept(*this);
+            // adds new cpp file to targets list
+            targets.push_back({ target, output_.stream().str() });
 
-        return compilation;
+            std::cout << "---" << workspace.first << ".cpp---\n" << output_.stream().str() << '\n';
+        }
+        // yields cpp targets list
+        return targets;
     }
 
     namespace impl {
@@ -96,12 +109,6 @@ namespace nemesis {
             { "c256", "std::complex<long double>" }
         };
     }
-
-    enum code_generator::kind code_generator::kind() const { return kind_; }
-
-    void code_generator::set_entry_point(const ast::function_declaration* decl) { entry_point_ = decl; }
-
-    const ast::function_declaration* code_generator::entry_point() const { return entry_point_; }
 
     void code_generator::trace(bool flag) { trace_ = flag; }
 
@@ -373,7 +380,7 @@ namespace nemesis {
                 
                 {
                     struct guard inner(output_);
-                    output_.line() << "if (self.__tag != " << hash << "ull) nscore_crash(\"damn, you cannot explictly convert variant since it has a different run-time type!\", file, line, column);\n";
+                    output_.line() << "if (self.__tag != " << hash << "ull) __crash(\"damn, you cannot explictly convert variant since it has a different run-time type!\", file, line, column);\n";
                     output_.line() << "return self._" << hash << "; \n";
                 }
 
@@ -385,7 +392,7 @@ namespace nemesis {
 
     void code_generator::emit_in_contracts(const ast::node& current)
     {
-        if (auto outer = scopes_.at(&current)->outscope(environment::kind::loop)) {
+        if (auto outer = checker_.scopes().at(&current)->outscope(environment::kind::loop)) {
             // first, before return statement, we must test invariant and ensure contracts, if any
             if (auto loop = dynamic_cast<const ast::for_loop_expression*>(outer)) {
                 for (auto contract : loop->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_ensure()) contract->accept(*this);
@@ -394,7 +401,7 @@ namespace nemesis {
                 for (auto contract : loop->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_ensure()) contract->accept(*this);
             }
         }
-        else if (auto outer = scopes_.at(&current)->outscope(environment::kind::function)) {
+        else if (auto outer = checker_.scopes().at(&current)->outscope(environment::kind::function)) {
             if (auto function = dynamic_cast<const ast::function_declaration*>(outer)) {
                 for (auto contract : function->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_ensure()) contract->accept(*this);
             }
@@ -406,7 +413,7 @@ namespace nemesis {
     
     void code_generator::emit_out_contracts(const ast::node& current)
     {
-        if (auto outer = scopes_.at(&current)->outscope(environment::kind::loop)) {
+        if (auto outer = checker_.scopes().at(&current)->outscope(environment::kind::loop)) {
             if (auto loop = dynamic_cast<const ast::for_loop_expression*>(outer)) {
                 for (auto contract : loop->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
             }
@@ -414,7 +421,7 @@ namespace nemesis {
                 for (auto contract : loop->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
             }
         }
-        else if (auto outer = scopes_.at(&current)->outscope(environment::kind::function)) {
+        else if (auto outer = checker_.scopes().at(&current)->outscope(environment::kind::function)) {
             if (auto function = dynamic_cast<const ast::function_declaration*>(outer)) {
                 for (auto contract : function->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
             }
@@ -426,14 +433,17 @@ namespace nemesis {
     
     std::string code_generator::fullname(const ast::declaration *decl) const
     {
-        if (decl == entry_point_) return "main";
+        if (decl == checker_.entry_point()) return "main";
 
         std::stack<std::string> levels;
         
         for (bool done = false; decl && !done;) {
             switch (decl->kind()) {
-                case ast::kind::nucleus:
-                    levels.push(static_cast<const ast::nucleus*>(decl)->name);
+                case ast::kind::workspace:
+                    // in case of primitive workspace `core`, then we need to rearrange declaration name to be preceeded by `__`
+                    if (static_cast<const ast::workspace*>(decl)->name == "core") levels.push("_");
+                    // normal workspace, then its name is used
+                    else levels.push(static_cast<const ast::workspace*>(decl)->name);
                     done = true;
                     break;
                 case ast::kind::function_declaration:
@@ -506,10 +516,10 @@ namespace nemesis {
         auto fntype = std::static_pointer_cast<ast::function_type>(decl->annotation().type);
         std::ostringstream result;
 
-        if (decl == entry_point_) return "int main(int __argc, char **__argv)";
+        if (decl == checker_.entry_point()) return "int main(int __argc, char **__argv)";
 
         // each associated is a static (class) method
-        if (dynamic_cast<const ast::type_declaration*>(scopes_.at(decl)->outscope(environment::kind::declaration))) result << "static ";
+        if (dynamic_cast<const ast::type_declaration*>(checker_.scopes().at(decl)->outscope(environment::kind::declaration))) result << "static ";
 
         if (types::compatible(types::unit(), fntype->result())) result << "void ";
         else result << emit(fntype->result()) << " ";
@@ -532,12 +542,12 @@ namespace nemesis {
         std::ostringstream result;
 
         // each associated is a static (class) method
-        if (dynamic_cast<const ast::type_declaration*>(scopes_.at(decl)->outscope(environment::kind::declaration))) result << "static ";
+        if (dynamic_cast<const ast::type_declaration*>(checker_.scopes().at(decl)->outscope(environment::kind::declaration))) result << "static ";
 
         if (types::compatible(types::unit(), fntype->result())) result << "void ";
         else result << emit(fntype->result()) << " ";
 
-        result << /*decl->name().lexeme()*/fullname(decl) << "(" << emit(decl->parameters().front()->annotation().type, std::static_pointer_cast<ast::parameter_declaration>(decl->parameters().front())->name().lexeme().string()) << ")";
+        result << fullname(decl) << "(" << emit(decl->parameters().front()->annotation().type, std::static_pointer_cast<ast::parameter_declaration>(decl->parameters().front())->name().lexeme().string()) << ")";
 
         return result.str();
     }
@@ -564,9 +574,9 @@ namespace nemesis {
             output_.line() << "};\n";
         }
 
-        if (scopes_.count(&decl)) {
-            for (auto constant : scopes_.at(&decl)->values()) constant.second->accept(*this);
-            for (auto function : scopes_.at(&decl)->functions()) function.second->accept(*this);
+        if (checker_.scopes().count(&decl)) {
+            for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
+            for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
         }
     }
     
@@ -639,16 +649,16 @@ namespace nemesis {
             
             {
                 struct guard inner(output_);
-                output_.line() << "if (self.__tag != " << hash << "ull) nscore_crash(\"damn, you cannot explictly convert variant since it has a different run-time type!\", file, line, column);\n";
+                output_.line() << "if (self.__tag != " << hash << "ull) __crash(\"damn, you cannot explictly convert variant since it has a different run-time type!\", file, line, column);\n";
                 output_.line() << "return self._" << hash << "; \n";
             }
 
             output_.line() << "}\n";
         }
 
-        if (scopes_.count(&decl)) {
-            for (auto constant : scopes_.at(&decl)->values()) constant.second->accept(*this);
-            for (auto function : scopes_.at(&decl)->functions()) function.second->accept(*this);
+        if (checker_.scopes().count(&decl)) {
+            for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
+            for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
         }
     }
 
@@ -665,7 +675,9 @@ namespace nemesis {
 
     void code_generator::visit(const ast::var_declaration& decl)
     {
-        if (trace_ && decl.annotation().scope->kind() != ast::kind::nucleus) output_.line() << "__record.location(" << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
+        output_.stream() << "#if __DEVELOPMENT__\n";
+        if (decl.annotation().scope->kind() != ast::kind::workspace) output_.line() << "__record.location(" << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
+        output_.stream() << "#endif\n";
 
         output_.line() << emit(decl.annotation().type, fullname(&decl));
 
@@ -724,12 +736,14 @@ namespace nemesis {
             {
                 struct guard inner(output_);
                 // stack activation record for stacktrace
-                if (trace_) output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+                output_.stream() << "#if __DEVELOPMENT__\n";
+                output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+                output_.stream() << "#endif\n";
                 // contracts
                 emit_in_contracts(decl);
             }
             // if entry point it initializes arguments properly from __argc, __argv
-            if (&decl == entry_point_ && !decl.parameters().empty()) {
+            if (&decl == checker_.entry_point() && !decl.parameters().empty()) {
                 struct guard inner(output_);
                 auto args_name = std::static_pointer_cast<ast::parameter_declaration>(decl.parameters().front())->name().lexeme();
                 output_.line() << "std::vector<__chars> __args_buffer((std::size_t) __argc);\n";
@@ -754,7 +768,7 @@ namespace nemesis {
                     body->exprnode() = stmts.front().get();
                     body->annotation().type = decl.body()->annotation().type;
                     decl.body() = body;
-                    scopes_.emplace(decl.body().get(), new environment(decl.body().get(), scopes_.at(&decl)));
+                    checker_.scopes().emplace(decl.body().get(), new environment(decl.body().get(), checker_.scopes().at(&decl)));
                     decl.body()->accept(*this);
                     break;
                 }
@@ -790,7 +804,9 @@ namespace nemesis {
             {
                 struct guard inner(output_);
                 // stack activation record for stacktrace
-                if (trace_) output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+                output_.stream() << "#if __DEVELOPMENT__\n";
+                output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+                output_.stream() << "#endif";
                 // contracts
                 emit_in_contracts(decl);
             }
@@ -810,7 +826,7 @@ namespace nemesis {
                     body->exprnode() = stmts.front().get();
                     body->annotation().type = decl.body()->annotation().type;
                     decl.body() = body;
-                    scopes_.emplace(decl.body().get(), new environment(decl.body().get(), scopes_.at(&decl)));
+                    checker_.scopes().emplace(decl.body().get(), new environment(decl.body().get(), checker_.scopes().at(&decl)));
                     decl.body()->accept(*this);
                     break;
                 }
@@ -1051,10 +1067,10 @@ namespace nemesis {
                 auto last = non_generic_name.find_last_of(')');
                 if (first != std::string::npos && last != std::string::npos) non_generic_name.erase(first, last);
                 // test name against builtin functions
-                if (non_generic_name == "allocate") output_.stream() << "nscore_allocate<" << emit(expr.generics().front()->annotation().type) << ">";
-                else if (non_generic_name == "deallocate") output_.stream() << "nscore_deallocate";
-                else if (non_generic_name == "free") output_.stream() << "nscore_free";
-                else if (non_generic_name == "sizeof") output_.stream() << "nscore_sizeof<" << emit(expr.generics().front()->annotation().type) << ">";
+                if (non_generic_name == "allocate") output_.stream() << "__allocate<" << emit(expr.generics().front()->annotation().type) << ">";
+                else if (non_generic_name == "deallocate") output_.stream() << "__deallocate";
+                else if (non_generic_name == "free") output_.stream() << "__free";
+                else if (non_generic_name == "sizeof") output_.stream() << "__sizeof<" << emit(expr.generics().front()->annotation().type) << ">";
                 else output_.stream() << fullname(expr.annotation().referencing);
             }
             else output_.stream() << fullname(expr.annotation().referencing);
@@ -1205,7 +1221,7 @@ namespace nemesis {
                 // with crash() or assert() call we implicitly pass file and line info to print the error
                 if (expr.callee()->annotation().referencing) {
                     std::string full_name = fullname(expr.callee()->annotation().referencing);
-                    if (full_name == "nscore_crash" || full_name == "nscore_assert") output_.stream() << ", \"" << expr.range().filename.string() << "\", " << expr.range().bline << ", " << expr.range().bcolumn;
+                    if (full_name == "__crash" || full_name == "__assert") output_.stream() << ", \"" << expr.range().filename.string() << "\", " << expr.range().bline << ", " << expr.range().bcolumn;
                 }
 
                 output_.stream() << ")";
@@ -1359,7 +1375,7 @@ namespace nemesis {
         guard guard(output_);
         bool is_function_body = false;
 
-        if (auto fn = scopes_.at(&expr)->outscope(environment::kind::function)) {
+        if (auto fn = checker_.scopes().at(&expr)->outscope(environment::kind::function)) {
             auto body = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->body().get() : static_cast<const ast::property_declaration*>(fn)->body().get();
             is_function_body = &expr == body;
             if (is_function_body && !types::compatible(expr.annotation().type, types::unit())) {
@@ -1388,7 +1404,9 @@ namespace nemesis {
                         if (types::compatible(types::unit(), value->annotation().type)) stmt->accept(*this);
                         // save results only if its type is not (), which is 'void' in C/C++
                         else if (!result_vars.empty()) {
-                            if (trace_) output_.line() << "__record.location(" << stmt->range().bline << ", " << stmt->range().bcolumn << ");\n";
+                            output_.stream() << "#if __DEVELOPMENT__\n";
+                            output_.line() << "__record.location(" << stmt->range().bline << ", " << stmt->range().bcolumn << ");\n";
+                            output_.stream() << "#endif\n";
                             output_.line() << result_vars.top() << " = ";
                             value->accept(*this);
                             output_.stream() << ";\n";
@@ -1401,7 +1419,7 @@ namespace nemesis {
         // 'return __result' is emitted only if we are inside main function or property body and at its end
         if (is_function_body && expr.exprnode() && expr.exprnode()->kind() != ast::kind::return_statement && !types::compatible(expr.annotation().type, types::unit())) {
             // on exit we must emit out contracts
-            emit_out_contracts(*scopes_.at(&expr)->outscope(environment::kind::function));
+            emit_out_contracts(*checker_.scopes().at(&expr)->outscope(environment::kind::function));
             // return result
             result_vars.pop();
             output_.line() << "return __result;\n";
@@ -1490,7 +1508,9 @@ namespace nemesis {
     void code_generator::visit(const ast::expression_statement& stmt)
     {
         // stack trace update of location
-        if (trace_) output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#if __DEVELOPMENT__\n";
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#endif\n";
 
         output_.line();
 
@@ -1512,7 +1532,9 @@ namespace nemesis {
     void code_generator::visit(const ast::assignment_statement& stmt)
     {
         // stack trace update of location
-        if (trace_) output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#if __DEVELOPMENT__\n";
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#endif\n";
 
         output_.line();
         // 1) first of all save assigned value inside temporary variable '__temp...', like 'val __temp... = rhs'
@@ -1597,7 +1619,9 @@ namespace nemesis {
         emit_out_contracts(*stmt.annotation().scope);
 
         // stack trace update of location
-        if (trace_) output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#if __DEVELOPMENT__\n";
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#endif\n";
 
         if (stmt.expression()) {
             switch (stmt.expression()->kind()) {
@@ -1630,9 +1654,11 @@ namespace nemesis {
     void code_generator::visit(const ast::contract_statement& stmt)
     {
         // stack trace update of location
-        if (trace_) output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#if __DEVELOPMENT__\n";
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#endif\n";
 
-        output_.line() << "nscore_assert(";
+        output_.line() << "__assert(";
         stmt.condition()->accept(*this);
         output_.stream() << ", \"contract failure, be more careful next time, dammit!\", \"" << stmt.range().filename << "\", " << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
     }

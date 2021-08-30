@@ -178,6 +178,7 @@ namespace nemesis {
          * which would take O(n*k) with n keywords.
          */
         static std::unordered_map<utf8::span, enum token::kind> keywords ({
+            { utf8::span("app"), token::kind::app_kw },
             { utf8::span("as"), token::kind::as_kw },
             { utf8::span("behaviour"), token::kind::behaviour_kw },
             { utf8::span("break"), token::kind::break_kw },
@@ -197,7 +198,7 @@ namespace nemesis {
             { utf8::span("invariant"), token::kind::invariant_kw },
             { utf8::span("is"), token::kind::is_kw },
             { utf8::span("mutable"), token::kind::mutable_kw },
-            { utf8::span("nucleus"), token::kind::nucleus_kw },
+            { utf8::span("lib"), token::kind::lib_kw },
             { utf8::span("range"), token::kind::range_kw },
             { utf8::span("require"), token::kind::require_kw },
             { utf8::span("return"), token::kind::return_kw },

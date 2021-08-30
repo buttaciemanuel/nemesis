@@ -1,5 +1,5 @@
-#ifndef __NSCORE_H__
-#define __NSCORE_H__
+#ifndef __CORE_H__
+#define __CORE_H__
 
 #include <complex>
 #include <cstdlib>
@@ -10,6 +10,8 @@
 #include <stack>
 #include <vector>
 #include <tuple>
+
+#define __DEVELOPMENT__ 1
 
 struct __char { std::int32_t codepoint; };
 
@@ -27,20 +29,27 @@ struct __stack_activation_record {
     void location(int line, int column);
 };
 
-// builtin and hidden procedures
+class __chars_iterator;
+
+class __chars;
+
+template<typename T> class __slice;
+
 constexpr __char __char_decode(const char* units);
 constexpr std::size_t __char_encode(__char value, char* units);
 template<typename... Args> void __impl_format(std::ostringstream& os, const char *fmt);
 template<typename Arg, typename... Args> void __impl_format(std::ostringstream& os, const char *fmt, Arg arg, Args ...args);
 template<typename Arg> void __impl_format(std::ostringstream& os, const char *fmt, Arg arg);
 template<typename... Args> std::string __format(std::string format, Args ...args);
-// standard functions
-template<typename T> constexpr std::size_t nscore_sizeof() { return sizeof(T); }
-void nscore_println(std::string s);
-void nscore_crash(std::string message, const char* file = nullptr, int line = 0, int column = 0);
-void nscore_assert(bool condition, std::string message, const char* file = nullptr, int line = 0, int column = 0);
-void nscore_exit(std::int32_t code);
-void nscore_stacktrace();
+template<typename T> constexpr std::size_t __sizeof() { return sizeof(T); }
+template<typename T> __slice<T> __allocate(std::size_t n);
+template<typename T> void __deallocate(__slice<T> slice);
+template<typename T> inline void __free(T* memory);
+void __println(std::string s);
+void __crash(std::string message, const char* file = nullptr, int line = 0, int column = 0);
+void __assert(bool condition, std::string message, const char* file = nullptr, int line = 0, int column = 0);
+void __exit(std::int32_t code);
+void __stacktrace();
 
 class __chars_iterator {
 public:
@@ -136,17 +145,19 @@ public:
     constexpr __slice(std::initializer_list<T> init, std::size_t size) : data_(const_cast<T*>(init.begin())), size_(size) {}
     constexpr std::size_t size() const { return size_; }
     constexpr T* data() const { return data_; }
-    constexpr T& operator[](std::size_t index) const { return data_[index]; }
+    constexpr T& operator[](std::size_t index) const 
+    {
+#if __DEVELOPMENT__
+        if (index >= size_) __crash(__format("slice index out of bounds, ? when size is ?", index, size_));
+#endif 
+        return data_[index]; 
+    }
     constexpr __slice_iterator<T> begin() const { return __slice_iterator<T>(data_); }
     constexpr __slice_iterator<T> end() const { return __slice_iterator<T>(data_ + size_); }
 private:
     T* data_;
     std::size_t size_;
 };
-
-template<typename T> __slice<T> nscore_allocate(std::size_t n) { return __slice<T>(new T[n], n); }
-template<typename T> void nscore_deallocate(__slice<T> slice) { delete[] slice.data(); }
-template<typename T> inline void nscore_free(T* memory) { delete[] memory; }
 
 template<typename T>
 class __rational {
@@ -166,8 +177,9 @@ public:
             numerator_ = numerator / divisor;
             denominator_ = denominator / divisor;
         }
-
-        if (denominator == 0) nscore_crash("denominator of rational number cannot be zero, damn!");
+#if __DEVELOPMENT__
+        if (denominator == 0) __crash("denominator of rational number cannot be zero, damn!");
+#endif
     }
     template<typename FloatType>
     constexpr FloatType real() const
@@ -251,17 +263,30 @@ private:
     T numerator_, denominator_; 
 };
 
-struct nscore_none {};
+struct __none {};
 
-// properties for builtin types
+template<typename T> __slice<T> __allocate(std::size_t n) { return __slice<T>(new T[n], n); }
+
+template<typename T> void __deallocate(__slice<T> slice) { delete[] slice.data(); }
+
+template<typename T> inline void __free(T* memory) { delete[] memory; }
+
 template<typename T> constexpr std::size_t __get_size(__slice<T> slice) { return slice.size(); }
+
 constexpr std::size_t __get_size(__chars arg) { return arg.size(); }
+
 constexpr std::size_t __get_length(__chars arg) { return arg.length(); }
+
 std::size_t __get_size(std::string arg);
+
 std::size_t __get_length(std::string arg);
+
 template<typename T> constexpr T __get_numerator(__rational<T> arg) { return arg.numerator(); }
+
 template<typename T> constexpr T __get_denominator(__rational<T> arg) { return arg.denominator(); }
+
 template<typename T> constexpr T __get_real(std::complex<T> arg) { return arg.real(); }
+
 template<typename T> constexpr T __get_imaginary(std::complex<T> arg) { return arg.imag(); }
 
 constexpr std::size_t __char_encode(__char value, char* units)

@@ -7,6 +7,7 @@
 #ifndef SOURCE_HANDLER_HPP
 #define SOURCE_HANDLER_HPP
 
+#include <filesystem>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -179,6 +180,12 @@ namespace nemesis {
          * @return Source files
          */
         const std::unordered_map<utf8::span, source_file*>& sources() const;
+        /**
+         * Returns the vector of cpp source file objects
+         * 
+         * @return Source files
+         */
+        const std::unordered_map<utf8::span, source_file*>& cppsources() const;
     private:
         /**
          * Construct a new source handler object
@@ -188,6 +195,10 @@ namespace nemesis {
          * Vector of source file pointers, each index is a file id
          */
         std::unordered_map<utf8::span, source_file*> files_;
+        /**
+         * Vector of cpp source file pointer
+         */
+        std::unordered_map<utf8::span, source_file*> cpp_files_;
     };
 
     /**
@@ -198,7 +209,6 @@ namespace nemesis {
         friend class tokenizer;
         friend class source_handler;
         friend class scanner;
-
         /**
          * Raw buffer holding content
          */
@@ -223,6 +233,18 @@ namespace nemesis {
             ~buffer();
         };
     public:
+        /**
+         * Kind of source file
+         */
+        enum class filetype { header, cpp, nemesis, other };
+        /**
+         * Disable for memory management
+         */
+        source_file(const source_file&) = delete;
+        /**
+         * Disable for memory management
+         */
+        source_file& operator=(const source_file&) = delete;
         /**
          * @return Source handler owner
          */
@@ -275,6 +297,11 @@ namespace nemesis {
          * @return True if file is builtin
          */
         bool builtin() const { return builtin_; }
+        /**
+         * Test file type
+         * @return True if file is of that type
+         */
+        bool has_type(filetype type) const;
     private:
         /**
          * Construct a new source file and

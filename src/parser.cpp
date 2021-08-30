@@ -43,16 +43,16 @@ namespace nemesis {
         static const std::string alias_decl_explanation = "An alias type defines an alternative name for an existing type, for example: \\2 `type(T, N: usize) SquareMatrix = Matrix(T, N, N)` defines a new alias for `Matrix(T, N, N)`";
         static const std::string type_decl_explanation = "You can define a new type as: • aggregate type, for example union or structure, which can have named of anonymous fields • variant type, which can cover different kinds • range type, which defines a numeric type that must follow range constraints • alias type, which defines an alternative name for an existing type";
         static const std::string generic_param_decl_explanation = "Generic parameters, types or constants, appear both in parameterize functions or types: • for example `function(T) if Clone(T) ...` function depends on a clonable T type • for example `type(N: usize) ...` type depends on integer N parameter \\ In order to instantiate explicitly a generic type or function then you need to specify its generic parameters list through `!(...)` notation. \\ Here's an example for creating a list of integers: \\2 `// explicit istantiation \\2 mutable val list: List(u32) = List!(u32).create()`";
-        static const std::string nucleus_decl_explanation = "When a source file contains a nucleus directive its public type and function declarations are automatically exported to all the files who share the common nucleus and reside in the same directory. Each file cannot contain more than one nucleus directive, on the other hand without any directive source file's type and function declarations are invisible by default. \\ See the example directory `math` with its files all sharing `nucleus math` directive at the very beginning to belong to the `math` nucleus (homonym directory): \\2 math \\3 ├─integrals.ns \\3 ├─matrix.ns \\3 └─derivatives.ns";
+        static const std::string workspace_decl_explanation = "When a source file contains an application or library directive its public type and function declarations are automatically exported to all the files who share the common workspace and reside in the same directory. Each file cannot contain more than one workspace directive, on the other hand without any directive source file's type and function declarations are invisible by default. \\ See the example directory `math` with its files all sharing `lib math` directive at the very beginning to belong to the `math` library (homonym directory): \\2 math \\3 ├─integrals.ns \\3 ├─matrix.ns \\3 └─derivatives.ns";
         static const std::string contract_stmt_explanation = "Contract statements help you catching runtime errors by testing conditional expressions. \\ There exist three kinds of contracts: • require statement is executed at the beginning of a function call • ensure statement is executed at the end of a function call • invariant statement is executed in both moments \\ Here's an example: \\2 `// requires the sequence to be sorted \\2 function bsearch(seq: [i32]) require sorted(seq) {...}` \\ Another context where to test an invariant is for loop: \\2 `// test wheter `i < n` at the beginning and ending of each iteration \\2 for i < 7 invariant i < n {...}`";
-        static const std::string use_decl_explanation = "Use declaration is useful to import types, functions or variables definitions from other nucleuses. In the same nucleus it is redundant to import such definitions. Here's an example: \\2 `use ns.math.SquareMatrix` // imports SquareMatrix type definition \\ However invisible declarations, marked with `hide`, can't be exported.";
+        static const std::string use_decl_explanation = "Use declaration is useful to import types, functions or variables definitions from other libraryes. In the same library it is redundant to import such definitions. Here's an example: \\2 `use ns.math.SquareMatrix` // imports SquareMatrix type definition \\ However invisible declarations, marked with `hide`, can't be exported.";
         static const std::string extend_decl_explanation = "An extend block must be used in order to extend a data type with some features like functions, properties, constants and type definitions. You can even declare what shared behaviours your type may inherit. Here's an example: \\2 `extend Rect as Shape { \\4 // function to create a rectangle, callable as Rect.create(b, h) \\4 create(base: f32, height: f32) Rect = Rect(base: base, height: height) \\4 // polymorphic property to compute area \\4 .area(r: *Rect) f32 = r.base * r.height \\4 ... \\2 }` \\ The interesting thing of defining functions inside an extend block is that those functions can be called as methods (like `object.method(args)`) on a type instance.";
         static const std::string behaviour_decl_explanation = "Polymorphic behaviour is achieved by extending a shared behaviour. In order to behave polymorphically an object must be passed by pointer. Upcasting to the base abstract (pointer) type is also possible. A shared behaviour is composed of functions and properties. \\ Here's an example of behaviour definition: \\2 `// behaviour for a Shape object \\2 behaviour Shape { \\4 // polymorphic property \\4 .area(s: *Shape) f32 \\2 }` \\ Now types `Triangle` and `Circle` will extend `Shape` shared behaviour: \\2 `// Triangle defined as Triangle(base: f32, height: f32) \\2 extend Triangle as Shape { \\4 .area(t: *Triangle) f32 = (t.base * t.height) / 2 \\2 } \\2 // Circle defined as Circle(radius: f32) \\2 extend Circle as Shape { \\4 .area(c: *Circle) f32 = 3.14159 * c.radius ** 2 \\2 }`";
         static const std::string concept_decl_explanation = "A concept definition is like a set of contraints (prototypes) over a type. For example, type `T` is considered to be comparable if it defines all compare operations. Here's what it would like: \\2 `concept(T) Compare { \\4 equal(left: T, right: T) bool \\4 not_equal(left: T, right: T) bool \\4 less(left: T, right: T) bool \\4 greater(left: T, right: T) bool \\4 less_equal(left: T, right: T) bool \\4 greater_equal(left: T, right: T) bool \\2 }` \\ Now if we define a type `U` which defines this functions in its extend block, then `Compare(U)` will always be satisfied as a constraint.";
         static const std::string extern_decl_explanation = "An extern block contains prototypes of functions defined in another compilation unit using C application binary interface. Here's an example: \\2 `extern { \\4 // this function is defined in another compilation unit and will have external linkage \\4 memcpy(dest: *[u8], src: *[u8], n: usize) \\2 }`";
         static const std::string var_decl_explanation = "To preserve state you can use variables or constants. Here's the differences: • constants, declared as `const`, are evaluated at compile time and cannot be modified • variables, declared as `val`, are evaluated at run-time and can have different lifetimes \\ When a variable is defined as static then it will live as longer as the program lives, otherwise an automatic variable's lifetime is bounded to its enclosing block. Moreover when a variable is defined as: • `val` then it means it cannot be reassigned and its value cannot be changed • `mutable val` then it may be reassigned and its value may be changed \\ Here's an example: \\2 `// variable whose value may be changed \\2 mutable val person = Person(name: \"John Doe\", age: 35) \\2 // compile-time constant \\2 const SIZE: usize = 2**32 \\2 // tupled variable declaration for destructuring \\2 val (name, age) = people.get(i)`";
         static const std::string test_decl_explanation = "Test are very useful for testing singular units of code. Here's an example: \\2 `// this will be executed in non-release mode for unit testing \\2 test my_test {...}`";
-        static const std::string source_unit_decl_explanation = "At top level context only certain declarations are allowed, including: • nucleus declaration • use declarations • variable or constant declarations • type declarations (including extend, behaviour and concept) • function declarations • test declaration";
+        static const std::string source_unit_decl_explanation = "At top level context only certain declarations are allowed, including: • library declaration • use declarations • variable or constant declarations • type declarations (including extend, behaviour and concept) • function declarations • test declaration";
         static const std::string local_decl_explanation = "Inside local context only certain statements are allowed, including: • use declarations • variable or constant declarations • type declarations (excluding behaviour and extend) • function declarations • test declaration • jump declaration (break or continue only inside loop) • expression statements (including if, for, when, blocks and others)";
     }
 
@@ -1945,8 +1945,9 @@ namespace nemesis {
             case token::kind::use_kw:
                 stmt = use_declaration();
                 break;
-            case token::kind::nucleus_kw:
-                stmt = nucleus_declaration();
+            case token::kind::app_kw:
+            case token::kind::lib_kw:
+                stmt = workspace_declaration();
                 break;
             default:
                 stmt = assignment_statement();
@@ -2624,25 +2625,48 @@ namespace nemesis {
         return nullptr;
     }
 
-    ast::pointer<ast::declaration> parser::nucleus_declaration()
+    ast::pointer<ast::declaration> parser::workspace_declaration()
     {
         guard guard(this);
         state saved = state_;
 
-        if (match(token::kind::nucleus_kw)) {
-            token path = consume(token::kind::identifier, "name", "I need nucleus path name here, don't you think?", impl::nucleus_decl_explanation);
+        if (match(token::kind::app_kw)) {
+            token path = consume(token::kind::identifier, "name", "I need application name here, don't you think?", impl::workspace_decl_explanation);
             match(token::kind::semicolon);
-            ast::pointer<ast::declaration> decl = ast::create<ast::nucleus_declaration>(source_range(saved.iter->location(), previous().range().end()), path);
+            ast::pointer<ast::declaration> decl = ast::create<ast::workspace_declaration>(source_range(saved.iter->location(), previous().range().end()), path);
             separator(decl);
 
-            if (nucleus_) {
-                const token& prev = dynamic_cast<ast::nucleus_declaration*>(nucleus_.get())->path();
+            if (workspace_) {
+                const token& prev = dynamic_cast<ast::workspace_declaration*>(workspace_.get())->path();
                 auto builder = diagnostic::builder()
                                .small(true)
                                .severity(diagnostic::severity::error)
                                .location(decl->range().begin())
-                               .message(diagnostic::format("This `$` nucleus declaration conflicts with previous one, dammit!", path.lexeme()))
-                               .explanation(impl::nucleus_decl_explanation)
+                               .message(diagnostic::format("This `$` application declaration conflicts with previous one, dammit!", path.lexeme()))
+                               .explanation(impl::workspace_decl_explanation)
+                               .highlight(path.range(), "conflicting")
+                               .note(prev.range(), diagnostic::format("This is the original declaration for nuclues `$`.", prev.lexeme()));
+
+                publisher_.publish(builder.build());
+                decl->invalid(true);
+            }
+
+            return decl;
+        }
+        else if (match(token::kind::lib_kw)) {
+            token path = consume(token::kind::identifier, "name", "I need library name here, don't you think?", impl::workspace_decl_explanation);
+            match(token::kind::semicolon);
+            ast::pointer<ast::declaration> decl = ast::create<ast::workspace_declaration>(source_range(saved.iter->location(), previous().range().end()), path);
+            separator(decl);
+
+            if (workspace_) {
+                const token& prev = dynamic_cast<ast::workspace_declaration*>(workspace_.get())->path();
+                auto builder = diagnostic::builder()
+                               .small(true)
+                               .severity(diagnostic::severity::error)
+                               .location(decl->range().begin())
+                               .message(diagnostic::format("This `$` library declaration conflicts with previous one, dammit!", path.lexeme()))
+                               .explanation(impl::workspace_decl_explanation)
                                .highlight(path.range(), "conflicting")
                                .note(prev.range(), diagnostic::format("This is the original declaration for nuclues `$`.", prev.lexeme()));
 
@@ -3113,10 +3137,11 @@ namespace nemesis {
             ast::pointer<ast::declaration> decl = nullptr;
 
             switch (current().kind()) {
-                case token::kind::nucleus_kw:
-                    decl = nucleus_declaration();
-                    if (nucleus_) statements.push_back(decl);
-                    else nucleus_ = decl;
+                case token::kind::app_kw:
+                case token::kind::lib_kw:
+                    decl = workspace_declaration();
+                    if (workspace_) statements.push_back(decl);
+                    else workspace_ = decl;
                     break;
                 case token::kind::use_kw:
                     decl = use_declaration();
@@ -3172,7 +3197,7 @@ namespace nemesis {
             break;
         }
 
-        return ast::create<ast::source_unit_declaration>(source_range(saved.iter->location(), previous().range().end()), nucleus_, imports, statements);
+        return ast::create<ast::source_unit_declaration>(source_range(saved.iter->location(), previous().range().end()), workspace_, imports, statements);
     }
 
     void parser::separator(ast::pointer<ast::statement> before)
@@ -3185,7 +3210,8 @@ namespace nemesis {
                             .explanation(impl::local_decl_explanation);
 
             switch (current().kind()) {
-                case token::kind::nucleus_kw:
+                case token::kind::app_kw:
+                case token::kind::lib_kw:
                 case token::kind::use_kw:
                 case token::kind::function_kw:
                 case token::kind::identifier:

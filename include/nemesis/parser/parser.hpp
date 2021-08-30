@@ -334,9 +334,9 @@ namespace nemesis {
          */
         ast::pointer<ast::statement> statement();
         /**
-         * @return Nucleus declaration, like `nucleus ns.core`
+         * @return Library declaration, like `library ns.core`
          */
-        ast::pointer<ast::declaration> nucleus_declaration();
+        ast::pointer<ast::declaration> workspace_declaration();
         /**
          * @return Import declaration, like `use ns.core`
          */
@@ -435,7 +435,7 @@ namespace nemesis {
         ast::pointer<ast::declaration> variant_kind_declaration();
         /**
          * @return Source unit (file) declaration, like
-         * `nucleus testing
+         * `library testing
          * use ns.core
          * 
          * test my_test {...}
@@ -487,9 +487,9 @@ namespace nemesis {
          */
         diagnostic_publisher& publisher_;
         /**
-         * First and only nucleus declaration (used for diagnostics)
+         * First and only library declaration (used for diagnostics)
          */
-        ast::pointer<ast::statement> nucleus_;
+        ast::pointer<ast::statement> workspace_;
 
         int silent_mode_ = 0;
         void silence() { ++silent_mode_; }

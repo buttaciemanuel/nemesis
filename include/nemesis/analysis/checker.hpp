@@ -5,6 +5,7 @@
 
 #include "nemesis/analysis/type.hpp"
 #include "nemesis/analysis/environment.hpp"
+#include "nemesis/driver/compilation.hpp"
 
 namespace nemesis {
     class substitutions;
@@ -65,15 +66,16 @@ namespace nemesis {
             checker* instance_;
         };
         
-        checker(std::unordered_map<std::string, ast::pointer<ast::nucleus>>& root, source_handler& handler, diagnostic_publisher& publisher);
+        checker(Compilation& compilation) : compilation_(compilation) {}
         ~checker();
-        void check();
+        void Check();
+        const Compilation& compilation() const { return compilation_; }
         source_file& source() const { return *file_; }
-        diagnostic_publisher& publisher() const { return publisher_; }
+        diagnostic_publisher& publisher() const { return compilation_.get_diagnostic_publisher(); }
         environment& scope() const { return *scope_; }
         std::unordered_map<const ast::node*, environment*> scopes() const { return scopes_; }
         environment* get_scope_by_context(const ast::node* root) const { return scopes_.at(root); }
-        ast::nucleus* nucleus() const;
+        ast::workspace* workspace() const;
         const ast::function_declaration* entry_point() const { return entry_point_; }
         void warning(source_range highlight, const std::string& message, const std::string& explanation = "", const std::string& inlined = "");
         void warning(const ast::unary_expression& expr, const std::string& message, const std::string& explanation = "", const std::string& inlined = "");
@@ -93,16 +95,15 @@ namespace nemesis {
         const ast::declaration* resolve(const ast::path& path) const;
         const ast::declaration* resolve_type(const ast::path& path, const environment* context = nullptr) const;
         const ast::declaration* resolve_variable(const ast::path& path, const environment* context = nullptr) const;
+        std::string fullname(const ast::declaration* decl) const;
     private:
         environment* begin_scope(const ast::node* enclosing);
         void end_scope();
         void add_to_scope(environment* scope, ast::pointer<ast::declaration> decl, const ast::statement* after = nullptr) const;
         std::unordered_map<std::string, const ast::declaration*> similars(const std::string& name, const environment* scope) const;
         void do_imports();
-        void import_builtin_symbols();
+        void import_core_library_in_workspaces();
         static size_t path_contains_subpath(const std::string& path, const std::string& subpath);
-        ast::nucleus* find_nucleus_parent(const std::string& name) const;
-        ast::nucleus* nucleus_of_file(const std::string& file) const;
         ast::pointer<ast::type> instantiate_type(const ast::type_declaration& tdecl, substitutions subs);
         bool instantiate_concept(const ast::concept_declaration& cdecl, substitutions subs);
         ast::pointer<ast::function_declaration> instantiate_function(const ast::function_declaration& fdecl, substitutions subs);
@@ -186,29 +187,25 @@ namespace nemesis {
         void visit(const ast::variant_declaration& decl);
         void visit(const ast::alias_declaration& decl);
         void visit(const ast::use_declaration& decl);
-        void visit(const ast::nucleus_declaration& decl);
+        void visit(const ast::workspace_declaration& decl);
         void visit(const ast::source_unit_declaration& decl);
         /**
-         * Root for all analyzed nucleuses
+         * This is the compilation object, which contains the root for all libraries to analyze
+         * The order of analysis is the same in which they are declared inside the object
          */
-        std::unordered_map<std::string, ast::pointer<ast::nucleus>>& root_;
+        Compilation& compilation_;
         /**
-         * Queue of declarations to be added to scope, this is performed later
-         * as it would invalidate vector of statement because of insertion
+         * Current package name
          */
-        std::list<std::tuple<environment*, ast::pointer<ast::declaration>, const ast::statement*>> pending_insertions;
+        std::string package_;
+        /**
+         * Current analyzed file
+         */
+        source_file* file_;
         /**
          * Entry point of execution
          */
         const ast::function_declaration* entry_point_ = nullptr;
-        /**
-         * Handler for all source files
-         */
-        source_handler& handler_;
-        /**
-         * Diagnostic publisher
-         */
-        diagnostic_publisher& publisher_;
         /**
          * Current scope environment
          */
@@ -218,13 +215,14 @@ namespace nemesis {
          */
         std::unordered_map<const ast::node*, environment*> scopes_;
         /**
-         * Current analyzed file
+         * Queue of declarations to be added to scope, this is performed later
+         * as it would invalidate vector of statement because of insertion
          */
-        source_file* file_;
+        std::list<std::tuple<environment*, ast::pointer<ast::declaration>, const ast::statement*>> pending_insertions;
         /**
          * Checker pass on an abstract syntax file
-         * Zero pass registers nucleus in root
-         * First pass registers the nucleus type declarations
+         * Zero pass registers workspace in root
+         * First pass registers the workspace type declarations
          * Second pass fully checks global type declarations
          * Third pass fully checks remained statements
          */
@@ -345,7 +343,7 @@ namespace nemesis {
         void visit(const ast::variant_declaration& decl);
         void visit(const ast::alias_declaration& decl);
         void visit(const ast::use_declaration& decl);
-        void visit(const ast::nucleus_declaration& decl);
+        void visit(const ast::workspace_declaration& decl);
         void visit(const ast::source_unit_declaration& decl);
         // checker instance
         checker& checker_;

@@ -3,7 +3,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "nscore.h"
+#include "core.h"
 
 // stack table which is thread local
 thread_local static std::stack<__stack_entry> __stack_table;
@@ -35,17 +35,19 @@ static bool __load_source_file(const char* path)
     return true;
 }
 
-static std::string __get_line_from_source(const char* path, unsigned line, unsigned column)
+static std::string __get_line_from_source(const char* path, unsigned line, unsigned column, std::vector<std::string>& before, std::vector<std::string>& after)
 {
     if (__sources.count(path) == 0 && !__load_source_file(path)) return {};
 
     int i = 1;                                                                                                            
-    const char* start = __sources[std::string(path)], *end;                                                                                           
+    const char* start = __sources[std::string(path)], *end, *old = start;
+    constexpr const unsigned offset = 2;                                                                                        
   
     while (*start != '\0' && i < line) {
-        while (*start != '\0' && *start != '\n') ++start;       
+        while (*start != '\0' && *start != '\n') ++start;
+        if (i >= line - offset && i < line) before.emplace_back(old, start);
         ++i;
-        ++start;
+        old = ++start;
     }
 
     if (*start == '\0') return {};
@@ -57,6 +59,13 @@ static std::string __get_line_from_source(const char* path, unsigned line, unsig
     std::string result(std::size_t(end - start), 0);
 
     std::copy(start, end, result.begin());
+
+    if (*end == '\0') return result;
+
+    for (start = ++end; *start != '\0' && i < line + offset; ++i, start = ++end) {
+        while (*end != '\0' && *end != '\n') ++end;
+        after.emplace_back(start, end);
+    }
 
     return result;
 }
@@ -77,29 +86,33 @@ void __stack_activation_record::location(int line, int column)
     }
 }
 
-void nscore_println(std::string s) { std::cout << s << '\n'; }
+void __println(std::string s) { std::cout << s << '\n'; }
 
-void nscore_crash(std::string message, const char* file, int line, int column) 
+void __crash(std::string message, const char* file, int line, int column) 
 {
     if (!file || line <= 0) std::cerr << "• crash: " << message << '\n';
     else std::cerr << "• crash at " << file << ":" << line << ":" << column << ": " << message << '\n';
-    nscore_stacktrace();
+#if __DEVELOPMENT__
+    __stacktrace();
+#endif
     std::exit(EXIT_FAILURE);
 }
 
-void nscore_assert(bool condition, std::string message, const char* file, int line, int column) 
+void __assert(bool condition, std::string message, const char* file, int line, int column) 
 {
     if (condition) return;
     if (!file || line <= 0) std::cerr << "• violation";
     else std::cerr << "• violation at " << file << ":" << line << ":" << column;
     if (!message.empty()) std::cerr << ": " << message << '\n';
-    nscore_stacktrace();
+#if __DEVELOPMENT__
+    __stacktrace();
+#endif
     std::exit(EXIT_FAILURE);
 }
 
-void nscore_exit(std::int32_t code) { std::exit(code); }
+void __exit(std::int32_t code) { std::exit(code); }
 
-void nscore_stacktrace()
+void __stacktrace()
 {
     if (__stack_table.empty()) return;
 
@@ -109,8 +122,12 @@ void nscore_stacktrace()
 
     for (unsigned int depth = 0; !__stack_table.empty(); __stack_table.pop(), ++depth) {
         __stack_entry entry = __stack_table.top();
-        std::string line = __get_line_from_source(entry.file, entry.line, entry.column);
+        std::vector<std::string> before, after;
+        std::string line = __get_line_from_source(entry.file, entry.line, entry.column, before, after);
+        unsigned iline = entry.line - before.size();
         std::cout << "  #" << depth << " " << entry.function  << " at " << entry.file << ":" << entry.line << ":" << entry.column << "\n";
-        if (!line.empty()) std::cout << " -> " << line << '\n';
+        for (auto line : before) std::cout << "     " << iline++ << " | " << line << '\n';
+        if (!line.empty()) std::cout << "  -> " << iline++ << " | " << line << '\n';
+        for (auto line : after) std::cout << "     " << iline++ << " | " << line << '\n';
     }
 }

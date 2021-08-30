@@ -9,16 +9,18 @@
 
 #include "nemesis/diagnostics/diagnostic.hpp"
 #include "nemesis/source/source.hpp"
+#include "nemesis/driver/compilation.hpp"
 
 namespace nemesis {
     /**
      * The driver handles the whole toolchain which comprehends
+     *     package manager
      *     compiler
      *     assembler
      *     linker
      * and links all those tools together
      */
-    class driver {
+    class Driver {
     public:
         /**
          * Compiler description message
@@ -33,9 +35,38 @@ namespace nemesis {
          */
         static const char help[];
         /**
-         * Standard library pathnames
+         * This is the main command which is executed by the driver
          */
-        static const char* builtin_files[];
+        enum class command {
+            /**
+             * Initialize the workspace directory, creating manifest and lock files
+             */
+            initialize,
+            /**
+             * Add a dependency to manifest file and update lock file
+             */
+            add,
+            /**
+             * Remove dependency from manifest file and update lock file
+             */
+            remove,
+            /**
+             * Build the entire workspace, generating an output if there is an entry point
+             */
+            build,
+            /**
+             * Clean workspace removing build information
+             */
+            clean,
+            /**
+             * Runs on fly the application if any, but before it builds the entire workspace
+             */
+            run,
+            /**
+             * Executes all test of current library
+             */
+            test
+        };
         /**
          * This class encapsulates argument options
          * inside a bitset
@@ -58,10 +89,6 @@ namespace nemesis {
                  * Prints the abstract syntax tree generated from each source file
                  */
                 ast = 0x4,
-                /**
-                 * Just compiles files without running
-                 */
-                compile = 0x8,
                 /**
                  * Dumps stack-trace if the program fails
                  */
@@ -96,8 +123,10 @@ namespace nemesis {
              */
             unsigned bits_ = 0x0;
         };
-
-        driver() = delete;
+        /**
+         * Deleted empty constructor
+         */
+        Driver() = delete;
         /**
          * Constructs a new driver bound to the diagnostic publisher
          * 
@@ -105,11 +134,15 @@ namespace nemesis {
          * @param argv String arguments including executable path
          * @param diagnostic_publisher Reference to diagnostic publisher
          */
-        driver(int argc, char **argv, diagnostic_publisher& diagnostic_publisher);
+        Driver(int argc, char **argv, diagnostic_publisher& diagnostic_publisher);
         /**
          * @return Argument options 
          */
         options get_options() const;
+        /**
+         * @return Command
+         */
+        command get_command() const;
         /**
          * @return Driver executable pathname 
          */
@@ -137,9 +170,49 @@ namespace nemesis {
          */
         void parse_arguments(int argc, char **argv);
         /**
+         * Prints an error
+         */
+        template<typename... Args>
+        void error(std::string format, Args... args) const { diagnostic_publisher_.publish(diagnostic::builder().severity(diagnostic::severity::error).message(diagnostic::format(format, args...)).build()); }
+        /**
+         * Prints a warning
+         */
+        template<typename... Args>
+        void warning(std::string format, Args... args) const { diagnostic_publisher_.publish(diagnostic::builder().severity(diagnostic::severity::warning).message(diagnostic::format(format, args...)).build()); }
+        /**
+         * Prints a message
+         */
+        template<typename... Args>
+        void message(std::string format, Args... args) const { diagnostic_publisher_.publish(diagnostic::builder().severity(diagnostic::severity::none).message(diagnostic::format(format, args...)).build()); }
+        /**
+         * Asks a question
+         */
+        template<typename InputType>
+        void question(std::string question, InputType& input) const 
+        { 
+            std::cout << "• " << question << " ";    
+            std::cin >> input;
+        }
+        /**
+         * Executes 'init' command inside current workspace
+         */
+        void init();
+        /**
+         * Executes 'build' command inside current workspace
+         */
+        void build();
+        /**
+         * Executes `clean` command inside current workspace
+         */
+        void clean();
+        /**
          * Exit code
          */
         int exit_code_;
+        /**
+         * Driver command
+         */
+        command command_;
         /**
          * Argument options
          */
