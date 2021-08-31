@@ -196,10 +196,13 @@ namespace nemesis {
              */
             static constexpr const char executable_path[] = "application";
             /**
-             * Constructs a package manager
-             * @param publisher Diagnostic publisher
+             * Global instance for curl management
              */
-            manager(diagnostic_publisher& publisher, source_handler& handler) : publisher_(publisher), source_handler_(handler) {}
+            static manager& instance(diagnostic_publisher& publisher, source_handler& handler);
+            /**
+             * Destructor for global instance
+             */
+            ~manager();
             /**
              * Parse a manifest file and constructs a manifest information
              * @return Manifest information
@@ -216,10 +219,28 @@ namespace nemesis {
              */
             lock generate_lock_file(pm::manifest manifest, std::string where);
             /**
+             * Install a new dependency, generates new lock file and writes it on disk
+             */
+            lock add_dependency(pm::manifest manifest, std::string lockpath, std::string name, std::string version = {});
+            /**
+             * Remove a dependency, generates new lock file and writes it on disk
+             */
+            lock remove_dependency(pm::manifest manifest, std::string lockpath, std::string name);
+            /**
              * Constructs compilation chain from lock file
              */
-            Compilation build_compilation_chain(pm::lock lockfile) const;
+            compilation build_compilation_chain(pm::lock lockfile) const;
+            /**
+             * Restore old manifest file if any
+             * Old manifest would be set by those calls that could change it, like `add_dependency`, `remove_dependency`
+             */
+            void restore() const;
         private:
+            /**
+             * Constructs a package manager
+             * @param publisher Diagnostic publisher
+             */
+            manager(diagnostic_publisher& publisher, source_handler& handler);
             /**
              * Prints an error
              */
@@ -249,9 +270,9 @@ namespace nemesis {
              */
             manifest unzip_package_manifest(std::string package, std::string path);
             /**
-             * Downloads a package in cache and returns its dependencies, setting its version
+             * Downloads package and stores it cache directory and return its dependencies
              */
-            std::list<pm::package> download_package_dependencies(pm::package& package, pm::lock::info& info);
+            std::list<pm::package> download_package(pm::package& package, pm::lock::info& info);
             /**
              * Extracts all files of package archive at <archive> into <to> directory
              */
@@ -265,17 +286,21 @@ namespace nemesis {
              */
             dependency_graph resolve(pm::manifest manifest);
             /**
+             * Prints out manifest file given information
+             */
+            void dump_manifest_file(pm::manifest manifest, std::string path) const;
+            /**
              * Prints out lock file given information
              */
             void dump_lock_file(pm::lock lock, std::string path) const;
             /**
              * Adds core library to compilation chain when this is not specified otherwise
              */
-            void load_core_library(Compilation& compilation) const;
+            void load_core_library(compilation& compilation) const;
             /**
              * Open all sources files beloging to package
              */
-            void load_package_workspace(Compilation& compilation, pm::lock::info package, pm::lock lockfile, bool is_dependency = false) const;
+            void load_package_workspace(compilation& compilation, pm::lock::info package, pm::lock lockfile, bool is_dependency = false) const;
             /**
              * Diagnostic publisher
              */
@@ -284,6 +309,10 @@ namespace nemesis {
              * Source handler
              */
             source_handler& source_handler_;
+            /**
+             * Manifest info which is stored before change and may be restored later
+             */
+            manifest restored_;
         };
     }
 }

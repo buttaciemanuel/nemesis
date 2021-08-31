@@ -9,7 +9,7 @@ namespace nemesis {
         code_generator(checker& checker);
         ~code_generator();
         // compiles source files and generates cpp target source files
-        std::list<Compilation::target> generate();
+        std::list<compilation::target> generate();
         void set_entry_point(const ast::function_declaration* decl);
         const ast::function_declaration* entry_point() const;
         void trace(bool flag);

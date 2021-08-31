@@ -15,22 +15,22 @@ namespace nemesis {
         struct workspace;
     };
 
-    class Compilation {
+    class compilation {
     public:
         /**
          * List of source file
          */
         using sources = std::list<source_file*>;
         /**
-         * Compilation unit for target code
+         * compilation unit for target code
          */
         struct target {
             /**
-             * Compilation unit name
+             * compilation unit name
              */
             std::string name;
             /**
-             * Compilation unit content
+             * compilation unit content
              */
             std::string content;
             /**
@@ -53,11 +53,11 @@ namespace nemesis {
             /**
              * List of source files
              */
-            Compilation::sources sources;
+            compilation::sources sources;
             /**
              * List of cpp source files
              */
-            Compilation::sources cpp_sources;
+            compilation::sources cpp_sources;
             /**
              * Package kind, which is application or library
              */
@@ -73,20 +73,20 @@ namespace nemesis {
             /**
              * Construct a generic package
              */
-            static package make(std::string name, std::string version, Compilation::sources sources, Compilation::sources cpp_sources = {}, bool builtin = false, enum kind kind = kind::none) { return package{name, version, sources, cpp_sources, kind, builtin}; }
+            static package make(std::string name, std::string version, compilation::sources sources, compilation::sources cpp_sources = {}, bool builtin = false, enum kind kind = kind::none) { return package{name, version, sources, cpp_sources, kind, builtin}; }
         };
         /**
          * Constructs a compilation object
          */
-        Compilation(diagnostic_publisher& publisher, source_handler& handler) : publisher_(publisher), source_handler_(handler) {}
+        compilation(diagnostic_publisher& publisher, source_handler& handler) : publisher_(publisher), source_handler_(handler) {}
         /**
          * Construct current workspace
          */
-        void current(std::string name, std::string version, sources sources, Compilation::sources cpp_sources = {}, bool builtin = false, enum package::kind kind = package::kind::none) { package_ = package::make(name, version, sources, cpp_sources, builtin, kind); }
+        void current(std::string name, std::string version, sources sources, compilation::sources cpp_sources = {}, bool builtin = false, enum package::kind kind = package::kind::none) { package_ = package::make(name, version, sources, cpp_sources, builtin, kind); }
         /**
          * Adds a dependency library to current workspace
          */
-        void dependency(std::string name, std::string version, sources sources, Compilation::sources cpp_sources = {}, bool builtin = false) 
+        void dependency(std::string name, std::string version, sources sources, compilation::sources cpp_sources = {}, bool builtin = false) 
         { 
             auto pkg = package::make(name, version, sources, cpp_sources, builtin);
             dependencies_.push_back(pkg); 
@@ -175,11 +175,11 @@ namespace nemesis {
             for (auto target : targets) std::filesystem::remove(target.name, code);
             // second round is for running compilation command
             if (status != 0) {
-                publisher_.publish(diagnostic::builder().severity(diagnostic::severity::error).message("some errors occurred when compiling source files, this is extremely weird, f*ck...").build());
+                publisher_.publish(diagnostic::builder().severity(diagnostic::severity::error).message("Some errors occurred when compiling source files, this is extremely weird, f*ck...").build());
                 return false;
             }
             // success
-            publisher_.publish(diagnostic::builder().severity(diagnostic::severity::none).message("compilation success, mate!").build());
+            publisher_.publish(diagnostic::builder().severity(diagnostic::severity::none).message("Compilation success, mate!").build());
             // exit with success
             return true;
         }

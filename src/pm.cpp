@@ -2,11 +2,10 @@
 #include <sstream>
 
 #include <zip.h>
+#include <curl/curl.h>
 
 #include "nemesis/diagnostics/diagnostic.hpp"
 #include "nemesis/pm/pm.hpp"
-
-#include <iostream>
 
 namespace nemesis {
     namespace pm {
@@ -160,6 +159,24 @@ namespace nemesis {
             return result;
         }
 
+        manager::manager(diagnostic_publisher& publisher, source_handler& handler) : publisher_(publisher), source_handler_(handler) 
+        {
+            // initialize curl globally
+            curl_global_init(CURL_GLOBAL_ALL);
+        }
+
+        manager::~manager()
+        {
+            // curl global clean up
+            curl_global_cleanup();
+        }
+
+        manager& manager::instance(diagnostic_publisher& publisher, source_handler& handler)
+        {
+            static class manager manager(publisher, handler);
+            return manager;
+        }
+
         manifest manager::parse_manifest_file(std::string path) const
         {
             // simple approach for parsing
@@ -236,6 +253,24 @@ namespace nemesis {
             return result;
         }
 
+        void manager::dump_manifest_file(pm::manifest manifest, std::string path) const
+        {
+            std::ofstream outfile(path.data(), std::ios_base::trunc);
+            // unable to open
+            if (!outfile) error("Sorry, can't create manifest file `$`...", path);
+            // prints package
+            outfile << (manifest.kind == manifest::kind::app ? "@application\n" : "@library\n")
+                    << "name '" << manifest.name << "'\n"
+                    << "version '" << manifest.version << "'\n"
+                    << "builtin " << (manifest.builtin ? "true" : "false") << "\n";
+            // prints dependencies
+            outfile << "@dependencies\n";
+            for (auto dep : manifest.dependencies) {
+                if (dep.second.version.empty()) outfile << dep.second.name << "\n";
+                else outfile << dep.second.name << " '" << dep.second.version << "'\n";
+            }
+        }
+
         void manager::dump_lock_file(pm::lock lock, std::string path) const
         {
             std::ofstream outfile(path.data(), std::ios_base::trunc);
@@ -249,7 +284,7 @@ namespace nemesis {
             for (auto dep : lock.dependencies) outfile << dep.name << ':' << dep.version << ':' << (dep.builtin ? "true" : "false") << ':' << dep.hash << ':' << dep.path << '\n';
         }
         
-        lock manager::generate_lock_file(pm::manifest manifest, std::string where)
+        lock manager::generate_lock_file(pm::manifest manifest, std::string where) try
         {
             lock result;
             // sets current package
@@ -269,6 +304,76 @@ namespace nemesis {
             dump_lock_file(result, where);
             // yields lock file information
             return result;
+        }
+        catch (pm::exception&) {
+            // error code for file system operations
+            std::error_code code;
+            // remove all cached files
+            std::filesystem::remove_all(manager::cache_path, code);
+            // throw again
+            throw;
+        }
+
+        lock manager::add_dependency(pm::manifest manifest, std::string lockpath, std::string name, std::string version)
+        {
+            // old manifest is set to be restored on future failure
+            restored_ = manifest;
+            // new dependency is already installed
+            if (manifest.dependencies.count(name) > 0) {
+                // different scenarios
+                // 1. new version is not specified, so we don't do anything
+                if (version.empty()) return generate_lock_file(manifest, lockpath);
+                // 2. version is specified
+                int compare = compare_version(version, manifest.dependencies[name].version);
+                // 2.a. new version is greater, so we do an upgrade
+                if (compare > 0) warning("Tryna do upgrade of package `$` `$` -> `$`, let's see...", name, manifest.dependencies[name].version, version);
+                // 2.b. new version is lower, so we do a downgrade
+                else if (compare < 0) warning("Tryna do downgrade of package `$` `$` -> `$`, hope you're sure of this...", name, manifest.dependencies[name].version, version);
+                // 2.c they're equal, so no action takes place
+                // in all cases, new version is set
+                manifest.dependencies[name].version = version;
+            }
+            // not yet installed, so it is added
+            else {
+                message("Adding package `$$` to your dependencies, brother...", version.empty() ? "" : " " + version, name);
+                manifest.dependencies.emplace(name, pm::package { name, version });
+            }
+            // dumps manifest
+            dump_manifest_file(manifest, manager::manifest_path);
+            // generates and writes new lock file
+            return generate_lock_file(manifest, lockpath);
+        }
+        
+        lock manager::remove_dependency(pm::manifest manifest, std::string lockpath, std::string name)
+        {
+            // old manifest is set to be restored on future failure
+            restored_ = manifest;
+            // dependency is installed, so it needs to be removed
+            if (manifest.dependencies.count(name) > 0) {
+                message("Removing package `$` from your dependencies...", name);
+                manifest.dependencies.erase(name);
+            }
+            // dependency is not installed, so error
+            else error("What the hell you're doing? Package `$` is not installed here.", name);
+            // dumps manifest
+            dump_manifest_file(manifest, manager::manifest_path);
+            // generates and writes new lock file
+            return generate_lock_file(manifest, lockpath);
+        }
+
+        void manager::restore() const
+        {
+            // since manifest was set buy provious calls, it is restored
+            if (restored_.kind != manifest::kind::none && !restored_.name.empty()) {
+                // error code for file system operations
+                std::error_code code;
+                // writes back old manifest on disk
+                dump_manifest_file(restored_, manager::manifest_path);
+                // remove lock file
+                std::filesystem::remove(manager::lock_path);
+                // log
+                message("Manifest file `$` restored, brother, easy.", manager::manifest_path);
+            }
         }
 
         void manager::extract_package_archive(std::string archive, std::string to)
@@ -360,41 +465,49 @@ namespace nemesis {
             return parse_manifest_file_from_buffer(stream);
         }
 
-        std::list<pm::package> manager::download_package_dependencies(pm::package& package, pm::lock::info& info)
+        // this callback is used for writing data from http request to downloaded file
+        static std::size_t receive(void* ptr, std::size_t size, std::size_t n, void* stream) { return fwrite(ptr, size, n, reinterpret_cast<std::FILE*>(stream)); }
+
+        std::list<pm::package> manager::download_package(pm::package& package, pm::lock::info& info)
         {
-            /** IN THEORY HERE WE MUST DO AN HTTP REQUEST FOR DOWNLOADING THE PACKAGE **/
-            const std::string path = std::string(std::getenv("HOME")).append("/Desktop/registry").append("/").append(package.name);
+            // central package registry server
+            const std::string server = "http://localhost:8000";
+            // destination for downloaded zip file
             const std::string destination = std::string(manager::cache_path) + "/" + package.name + ".zip";
             // error code for file system operations
             std::error_code code;
-            // log info
-            if (package.version.empty()) message("Downloading package `$`...", package.name);
-            else message("Downloading package `$ $`...", package.name, package.version);
-            // first of all test if package is present
-            if (!std::filesystem::exists(path)) error("Package `$` was not found on central repository, maybe you mispelled its name.", package.name);
-            // if version is not specified, we look for the lastest stable version
+            // info code of http operation
+            long status;
+            // handle used for operations
+            CURL* handle = curl_easy_init();
+            // set up url for GET request to download package without version
             if (package.version.empty()) {
-                unsigned versions = 0;
-                // we set the version to get the maximum
-                package.version = "0.0.0";
-                // then we iterate over the versions
-                for (auto entry : std::filesystem::directory_iterator(path)) {
-                    std::string current = entry.path().filename();
-                    // peek maximum version
-                    if (compare_version(current, package.version) > 0) package.version = current;
-                    // increment number of versions
-                    ++versions;
-                }
-                // test that something was found
-                if (versions == 0) error("No version available for package `$` on central repository.", package.name);
+                message("Downloading package `$`...", package.name);
+                curl_easy_setopt(handle, CURLOPT_URL, diagnostic::format("$/?package=$", server, package.name).data());
             }
-            // version is specified so we download that exact package
-            else if (!std::filesystem::exists(path + "/" + package.version)) error("Specific version `$` of package `$` was not found on central repository, maybe you mispelled its name.", package.version, package.name);
-            // we download the exact version (file zip), specified or not (inferred), inside cache directory (replacing previous one eventually)
-            std::filesystem::remove(destination, code);
-            std::filesystem::copy_file(path + "/" + package.version + "/" + package.name + ".zip", destination, code);
-            // log info
-            message("Package `$ $` downloaded!", package.name, package.version);
+            // set up url for GET request to download package with specific version
+            else {
+                message("Downloading package `$ $`...", package.name, package.version);
+                curl_easy_setopt(handle, CURLOPT_URL, diagnostic::format("$/?package=$&version=$", server, package.name, package.version).data());
+            }
+            // set write function to add data to file stream
+            curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, receive);
+            // open file for output
+            std::FILE* output = std::fopen(destination.data(), "w");
+            // if we can't open file, then error
+            if (!output) error("I can't create file `$` while downloading package `$` from central registry, goddamn!", destination, package.name);
+            // set file output
+            curl_easy_setopt(handle, CURLOPT_WRITEDATA, output);
+            // make http GET request to download package
+            curl_easy_perform(handle);
+            // get information about result
+            curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &status);
+            // close file
+            std::fclose(output);
+            // operation failure
+            if (status != 200) error("I had trouble downloading package `$` from central registry, maybe it doesn't exist...", package.name);
+            // operations success
+            message("Package `$$` downloaded!", package.name, package.version.empty() ? "" : " " + package.version);
             // unzip its manifest to get information
             pm::manifest manifest = unzip_package_manifest(package.name, destination);
             // constructs dependencies
@@ -410,7 +523,7 @@ namespace nemesis {
             // dependencies of current package
             return dependencies;
         }
-
+        
         void manager::dfs(dependency_graph& graph, std::set<std::string>& visited, package current)
         {
             // sets current node as visited
@@ -418,7 +531,7 @@ namespace nemesis {
             // info abount current package
             pm::lock::info info;
             // downloads package dependencies from central repository
-            std::list<pm::package> dependencies = download_package_dependencies(current, info);
+            std::list<pm::package> dependencies = download_package(current, info);
             // for each dependency
             for (auto dependency : dependencies) {
                 if (visited.count(dependency.name) > 0) {
@@ -427,14 +540,14 @@ namespace nemesis {
                     // dependency conflict, two different versions, the algorithm chooses the lowest one
                     //else if (!dependency.version.empty() && graph.nodes[dependency.name].package.version != dependency.version) error("Dependency conflict, package `$` appears in both versions `$` and `$`!", dependency.name, graph.nodes[dependency.name].package.version, dependency.version);
                     // dependency conflict, two different versions, the algorithm chooses the lowest one
-                    else if (!dependency.version.empty()) {
+                    else if (!dependency.version.empty() && !graph.nodes[dependency.name].package.version.empty()) {
                         // compare version of new dependency against already resolved dependency's version
                         int compare = compare_version(graph.nodes[dependency.name].package.version, dependency.version);
                         // this means that dependency (lowest) is already downloaded as it is the resolved one
-                        if (compare < 0) message("I found dependency `$` duplication between versions `$` and `$`, choosing `$`, okay?", dependency.name, graph.nodes[dependency.name].package.version, dependency.version, graph.nodes[dependency.name].package.version);
+                        if (compare < 0) warning("I found dependency `$` duplication between versions `$` and `$`, choosing `$`, okay?", dependency.name, graph.nodes[dependency.name].package.version, dependency.version, graph.nodes[dependency.name].package.version);
                         // this means that dependency is not yet downloaded as we selected the new dependency's version (lowest)
                         else if (compare > 0) {
-                            message("I found dependency `$` duplication between versions `$` and `$`, choosing `$`, okay?", dependency.name, graph.nodes[dependency.name].package.version, dependency.version, graph.nodes[dependency.name].package.version);
+                            warning("I found dependency `$` duplication between versions `$` and `$`, choosing `$`, okay?", dependency.name, graph.nodes[dependency.name].package.version, dependency.version, graph.nodes[dependency.name].package.version);
                             // remove previous dependency (unset resolved)
                             graph.nodes.erase(dependency.name);
                             // (unset visited)
@@ -481,14 +594,14 @@ namespace nemesis {
                     // cyclic dependency, visited but not yet resolved
                     if (graph.nodes.count(dependency.name) == 0) error("Cyclic dependency with package `$`!", dependency.name);
                     // dependency conflict, two different versions, the algorithm chooses the lowest one
-                    else if (!dependency.version.empty()) {
+                    else if (!dependency.version.empty() && !graph.nodes[dependency.name].package.version.empty()) {
                         // compare version of new dependency against already resolved dependency's version
                         int compare = compare_version(graph.nodes[dependency.name].package.version, dependency.version);
                         // this means that dependency (lowest) is already downloaded as it is the resolved one
-                        if (compare < 0) message("I found dependency `$` duplication between versions `$` and `$`, choosing `$`, okay?", dependency.name, graph.nodes[dependency.name].package.version, dependency.version, graph.nodes[dependency.name].package.version);
+                        if (compare < 0) warning("I found dependency `$` duplication between versions `$` and `$`, choosing `$`, okay?", dependency.name, graph.nodes[dependency.name].package.version, dependency.version, graph.nodes[dependency.name].package.version);
                         // this means that dependency is not yet downloaded as we selected the new dependency's version (lowest)
                         else if (compare > 0) {
-                            message("I found dependency `$` duplication between versions `$` and `$`, choosing `$`, okay?", dependency.name, graph.nodes[dependency.name].package.version, dependency.version, graph.nodes[dependency.name].package.version);
+                            warning("I found dependency `$` duplication between versions `$` and `$`, choosing `$`, okay?", dependency.name, graph.nodes[dependency.name].package.version, dependency.version, graph.nodes[dependency.name].package.version);
                             // remove previous dependency (unset resolved)
                             graph.nodes.erase(dependency.name);
                             // (unset visited)
@@ -508,24 +621,21 @@ namespace nemesis {
             graph.nodes[manifest.name] = source;
             // dumps packages in topological order onto lock file and extracts them into `libs` directory (dependencies)
             for (auto package : graph.topological) {
-                std::cout << package.name << " = " << package.version << '\n';
                 // extracts dependency archive (for example `math.zip`) inside dependency directory (so in `libs`)
                 extract_package_archive(std::string(manager::cache_path) + "/" + package.name + ".zip", manager::dependencies_path);
             }
             // source goes last in this case as it's been resolved for last
             graph.topological.push_back(pm::lock::info { manifest.name, manifest.version, manifest.builtin, "deadbeef", std::filesystem::current_path() });
-            // dumps source.package
-            std::cout << source.package.name << " = " << source.package.version << '\n';
             // remove cache of downloaded libraries
             std::filesystem::remove_all(manager::cache_path, code);
             // yields result
             return graph;
         }
 
-        void manager::load_package_workspace(Compilation& compilation, pm::lock::info package, pm::lock lockfile, bool is_dependency) const
+        void manager::load_package_workspace(compilation& compilation, pm::lock::info package, pm::lock lockfile, bool is_dependency) const
         {
             // construct all sources for this workspace
-            Compilation::sources sources, cpp_sources;
+            compilation::sources sources, cpp_sources;
             // traverse sources inside 'src' directory
             for (auto entry : std::filesystem::directory_iterator(package.path + "/src")) {
                 auto path = utf8::span::builder().concat(entry.path().string().data()).build();
@@ -544,13 +654,13 @@ namespace nemesis {
             // if dependency, then it is added to our compilation
             if (is_dependency) compilation.dependency(package.name, package.version, sources, cpp_sources, package.builtin);
             // current workspace
-            else compilation.current(package.name, package.version, sources, cpp_sources, package.builtin, lockfile.kind == manifest::kind::app ? Compilation::package::kind::app : lockfile.kind == manifest::kind::lib ? Compilation::package::kind::lib : Compilation::package::kind::none);
+            else compilation.current(package.name, package.version, sources, cpp_sources, package.builtin, lockfile.kind == manifest::kind::app ? compilation::package::kind::app : lockfile.kind == manifest::kind::lib ? compilation::package::kind::lib : compilation::package::kind::none);
         }
 
-        Compilation manager::build_compilation_chain(pm::lock lockfile) const
+        compilation manager::build_compilation_chain(pm::lock lockfile) const
         {
             // construct compilation chain
-            Compilation compilation(publisher_, source_handler_);
+            compilation compilation(publisher_, source_handler_);
             // loads core library package, which is the only depedency that is not directly moved into `libs` directory of current package only if
             // i. current package is not `core` itself
             // ii. current package does not list `core` among its dependencies
@@ -563,7 +673,7 @@ namespace nemesis {
             return compilation;
         }
 
-        void manager::load_core_library(Compilation& compilation) const
+        void manager::load_core_library(compilation& compilation) const
         {
             // loads file into cache
             auto cppheader = utf8::span::builder().concat(std::string(std::getenv("HOME")).append("/Desktop/nemesis/libcore/cpp/core.h").data()).build();

@@ -8,8 +8,6 @@
 #include <functional>
 #include <iostream>
 
-#include <cassert>
-
 namespace nemesis {
     environment::environment(const ast::node* enclosing, environment* parent) : 
         enclosing_(enclosing), parent_(parent) 
@@ -346,8 +344,8 @@ namespace nemesis {
                     }
                 }
                 else if (auto constant = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(param)) {
-                    if (param != clause->parameters().front()) oss << ", " /*<< std::hex*/ << subs.constant(constant.get())->second/*.hash()*/;
-                    else oss << /*std::hex <<*/ subs.constant(constant.get())->second/*.hash()*/;
+                    if (param != clause->parameters().front()) oss << ", " << subs.constant(constant.get())->second;
+                    else oss << subs.constant(constant.get())->second;
                 }
             }
             oss << ")";
@@ -531,8 +529,8 @@ namespace nemesis {
                     }
                 }
                 else if (auto constant = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(param)) {
-                    if (param != clause->parameters().front()) oss << ", " /*<< std::hex*/ << subs.constant(constant.get())->second/*.hash()*/;
-                    else oss << /*std::hex <<*/ subs.constant(constant.get())->second/*.hash()*/;
+                    if (param != clause->parameters().front()) oss << ", " << subs.constant(constant.get())->second;
+                    else oss << subs.constant(constant.get())->second;
                 }
             }
             oss << ")";
@@ -671,8 +669,8 @@ namespace nemesis {
                     }
                 }
                 else if (auto constant = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(param)) {
-                    if (param != clause->parameters().front()) oss << ", " /*<< std::hex*/ << subs.constant(constant.get())->second/*.hash()*/;
-                    else oss << /*std::hex <<*/ subs.constant(constant.get())->second/*.hash()*/;
+                    if (param != clause->parameters().front()) oss << ", " << subs.constant(constant.get())->second;
+                    else oss << subs.constant(constant.get())->second;
                 }
             }
             oss << ")";
@@ -1919,7 +1917,7 @@ namespace nemesis {
                         auto expected = std::dynamic_pointer_cast<ast::generic_clause_declaration>(typedecl->generic());
                         std::unordered_map<const ast::declaration*, ast::pointer<ast::type>> tsubstitutions;
                         std::unordered_map<const ast::declaration*, constval> csubstitutions;
-                        substitutions sub(*this, scopes_.at(typedecl->generic().get()), nullptr);
+                        substitutions sub(scopes_.at(typedecl->generic().get()), nullptr);
                         
                         if (expected->parameters().size() != expr.generics().size()) {
                             auto diag = diagnostic::builder()
@@ -2130,7 +2128,7 @@ namespace nemesis {
 
                 auto name = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->name() : static_cast<const ast::property_declaration*>(fn)->name();
                 bool mistake = false;
-                substitutions sub(*this, scope_, nullptr);
+                substitutions sub(scope_, nullptr);
 
                 // we try generic instantiation of function if requested from annotation
                 if (!expr.annotation().deduce);
@@ -2323,7 +2321,7 @@ namespace nemesis {
                         auto expected = std::dynamic_pointer_cast<ast::generic_clause_declaration>(ct->generic());
                         std::unordered_map<const ast::declaration*, ast::pointer<ast::type>> tsubstitutions;
                         std::unordered_map<const ast::declaration*, constval> csubstitutions;
-                        substitutions sub(*this, scopes_.at(ct->generic().get()), nullptr);
+                        substitutions sub(scopes_.at(ct->generic().get()), nullptr);
                         
                         if (expected->parameters().size() != expr.generics().size()) {
                             auto diag = diagnostic::builder()
@@ -2623,7 +2621,7 @@ namespace nemesis {
                         auto expected = std::dynamic_pointer_cast<ast::generic_clause_declaration>(typedecl->generic());
                         std::unordered_map<const ast::declaration*, ast::pointer<ast::type>> tsubstitutions;
                         std::unordered_map<const ast::declaration*, constval> csubstitutions;
-                        substitutions sub(*this, scopes_.at(typedecl->generic().get()), nullptr);
+                        substitutions sub(scopes_.at(typedecl->generic().get()), nullptr);
                         
                         if (expected->parameters().size() != expr.generics().size()) {
                             auto diag = diagnostic::builder()
@@ -2860,7 +2858,7 @@ namespace nemesis {
                 
                 auto name = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->name() : static_cast<const ast::property_declaration*>(fn)->name();
                 bool mistake = false, concrete = true;
-                substitutions sub(*this, scope_, nullptr);
+                substitutions sub(scope_, nullptr);
 
                 // we try generic instantiation of function if requested from annotation
                 if (!expr.annotation().deduce);
@@ -3067,7 +3065,7 @@ namespace nemesis {
                         auto expected = std::dynamic_pointer_cast<ast::generic_clause_declaration>(ct->generic());
                         std::unordered_map<const ast::declaration*, ast::pointer<ast::type>> tsubstitutions;
                         std::unordered_map<const ast::declaration*, constval> csubstitutions;
-                        substitutions sub(*this, scopes_.at(ct->generic().get()), nullptr);
+                        substitutions sub(scopes_.at(ct->generic().get()), nullptr);
                         
                         if (expected->parameters().size() != expr.generics().size()) {
                             auto diag = diagnostic::builder()
@@ -4124,7 +4122,7 @@ namespace nemesis {
 
                     auto identifier = std::dynamic_pointer_cast<ast::identifier_expression>(member->member());
                     bool mistake = false, concrete = true;
-                    substitutions sub(*this, scope_, nullptr);
+                    substitutions sub(scope_, nullptr);
 
                     // checks if there were provided any generic arguments
                     if (identifier && identifier->is_generic()) {
@@ -4463,12 +4461,12 @@ namespace nemesis {
                     }
                 }
                 // if function is called through oop notation as a method, then first parameter, the object, is implicitly passed
-                else if (member->expression()->annotation().type->declaration() || (member->expression()->annotation().type->category() == ast::type::category::pointer_type && std::static_pointer_cast<ast::pointer_type>(member->expression()->annotation().type)->base()->declaration())) /*(member->annotation().referencing && member->expression()->annotation().type->declaration() == member->annotation().referencing->annotation().scope)*/ {
+                else if (member->expression()->annotation().type->declaration() || (member->expression()->annotation().type->category() == ast::type::category::pointer_type && std::static_pointer_cast<ast::pointer_type>(member->expression()->annotation().type)->base()->declaration())) {
                     auto identifier = std::dynamic_pointer_cast<ast::identifier_expression>(member->member());
                     auto fn = identifier->annotation().referencing;
                     auto name = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->name() : static_cast<const ast::property_declaration*>(fn)->name();
                     bool mistake = false, concrete = true;
-                    substitutions sub(*this, scope_, nullptr);
+                    substitutions sub(scope_, nullptr);
 
                     if (auto fndecl = dynamic_cast<const ast::function_declaration*>(fn)) {
                         if (!fndecl->parameters().empty() && std::dynamic_pointer_cast<ast::parameter_declaration>(fndecl->parameters().back())->is_variadic()) variadic = std::dynamic_pointer_cast<ast::slice_type>(fndecl->parameters().back()->annotation().type)->base();
@@ -4980,7 +4978,7 @@ namespace nemesis {
                 auto name = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->name() : static_cast<const ast::property_declaration*>(fn)->name();
                 ast::pointer<ast::type> variadic = nullptr;
                 bool mistake = false, concrete = true;
-                substitutions sub(*this, scope_, nullptr);
+                substitutions sub(scope_, nullptr);
 
                 if (auto fndecl = dynamic_cast<const ast::function_declaration*>(fn)) {
                     if (!fndecl->parameters().empty() && std::dynamic_pointer_cast<ast::parameter_declaration>(fndecl->parameters().back())->is_variadic()) variadic = std::dynamic_pointer_cast<ast::slice_type>(fndecl->parameters().back()->annotation().type)->base();
@@ -10144,7 +10142,7 @@ namespace nemesis {
             
             auto saved = begin_scope(decl.type_expression()->annotation().type->declaration());
 
-            /* declares in same scope */ if (auto generics = std::static_pointer_cast<ast::generic_clause_declaration>(decl.generic())) {
+            if (auto generics = std::static_pointer_cast<ast::generic_clause_declaration>(decl.generic())) {
                 for (auto generic : generics->parameters()) {
                     if (generic->invalid()) continue;
                     scope_->define(generic.get());
@@ -10341,13 +10339,12 @@ namespace nemesis {
             }
             catch (semantic_error& err) { scope_ = saved; }
 
-            // FOR GENERIC TYPES DECLARATION
+            // for generic types' declarations
             auto inner = scope_;
             for (auto pair : scope_->types()) try {
                 if (pair.second->generic()) try { begin_scope(pair.second->generic().get()); pair.second->generic()->accept(*this); end_scope(); } catch (abort_error&) { throw; } catch (...) { scope_ = inner; }
                 scope_ = inner;
 
-                /** ---- **/ 
                 if (auto outclause = std::static_pointer_cast<ast::generic_clause_declaration>(decl.generic())) {
                     if (auto inclause = std::static_pointer_cast<ast::generic_clause_declaration>(pair.second->generic())) {
                         inclause->parameters().insert(inclause->parameters().end(), outclause->parameters().begin(), outclause->parameters().end());
@@ -11423,7 +11420,7 @@ namespace nemesis {
         }
     }
 
-    void checker::Check() try {
+    void checker::check() try {
         // pass zero
         pass_ = pass::zero;
         // each source file is associated to a workspace, and each workspace (which are namespaces)
@@ -11648,8 +11645,10 @@ namespace nemesis {
     void substitutions::visit(const ast::identifier_expression& expr) 
     {
         for (auto arg : expr.generics()) arg->accept(*this);
-        auto result = expr.annotation().referencing ? expr.annotation().referencing : checker_.resolve_variable({ expr.identifier() }, context_);
 
+        auto result = expr.annotation().referencing;
+        if (!result) result = context_->value(expr.identifier().lexeme().string());
+        if (!result) result = context_->type(expr.identifier().lexeme().string());
         if (!result) return;
 
         auto maybe_const = constant(result);
@@ -11659,6 +11658,8 @@ namespace nemesis {
             expr.annotation().istype = false;
             expr.annotation().value = maybe_const->second;
             expr.annotation().type = maybe_const->second.type;
+            expr.annotation().referencing = maybe_const->first;
+            std::cout << "generic const " << expr.identifier() << " has value " << expr.annotation().value << '\n';
         }
         else if (maybe_type != types().end()) {
             expr.annotation().istype = true;

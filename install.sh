@@ -1,28 +1,24 @@
 #!/bin/bash
 # install dependencies
-# install boost
-apt install build-essential libboost-system-dev libboost-thread-dev libboost-program-options-dev libboost-test-dev
 # install libzip
 cd
-wget https://libzip.org/download/libzip-1.8.0.tar.gz
-tar xvfz libzip-1.8.0.tar.gz
-cd libzip-1.8.0
+git clone https://github.com/nih-at/libzip.git
+cd libzip
 mkdir build
 cd build
 cmake ..
 make
 make install
 cd
-rm -rf libzip-1.8.0
-# install cppnetlib
+rm -rf libzip
+# install libcurl
 cd
-git clone https://github.com/cpp-netlib/cpp-netlib
-cd cpp-netlib
-git submodule init
-git submodule update
+git clone https://github.com/curl/curl.git
+cd curl
 mkdir build
 cd build
-cmake -DCPP-NETLIB_ENABLE_HTTPS=Off -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ..
+cmake ..
 make
+make install
 cd
-rm -rf cpp-netlib
+rm -rf curl

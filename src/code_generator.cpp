@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <fstream>
 #include <stack>
+#include <regex>
 
 #include "nemesis/codegen/code_generator.hpp"
 #include "nemesis/analysis/environment.hpp"
@@ -11,10 +12,10 @@ namespace nemesis {
 
     code_generator::~code_generator() {}
     
-    std::list<Compilation::target> code_generator::generate()
+    std::list<compilation::target> code_generator::generate()
     {
         // cpp target files
-        std::list<Compilation::target> targets;
+        std::list<compilation::target> targets;
         // public header will contains all public declarations and headers from `cpp` directories
         filestream exported("__exported.h");
         // adds all `src` header files (.h, .hpp)
@@ -500,7 +501,8 @@ namespace nemesis {
         auto name = result.str();
 
         std::replace_if(name.begin(), name.end(), [](char c) { return c == '(' || c == ')'; }, '_');
-
+        name = std::regex_replace(name, std::regex(", |,"), "_");
+        
         return name;
     }
 
@@ -1056,7 +1058,7 @@ namespace nemesis {
     {
         if (expr.annotation().referencing) {
             // emit constant
-            if (expr.annotation().referencing->kind() == ast::kind::const_declaration && expr.annotation().value.type && expr.annotation().value.type->category() != ast::type::category::unknown_type) {
+            if ((expr.annotation().referencing->kind() == ast::kind::const_declaration || expr.annotation().referencing->kind() == ast::kind::generic_const_parameter_declaration) && expr.annotation().value.type && expr.annotation().value.type->category() != ast::type::category::unknown_type) {
                 output_.stream() << emit(expr.annotation().value);
             }
             // builtin functions

@@ -20,7 +20,7 @@ namespace nemesis {
      *     linker
      * and links all those tools together
      */
-    class Driver {
+    class driver {
     public:
         /**
          * Compiler description message
@@ -126,7 +126,7 @@ namespace nemesis {
         /**
          * Deleted empty constructor
          */
-        Driver() = delete;
+        driver() = delete;
         /**
          * Constructs a new driver bound to the diagnostic publisher
          * 
@@ -134,7 +134,7 @@ namespace nemesis {
          * @param argv String arguments including executable path
          * @param diagnostic_publisher Reference to diagnostic publisher
          */
-        Driver(int argc, char **argv, diagnostic_publisher& diagnostic_publisher);
+        driver(int argc, char **argv, diagnostic_publisher& diagnostic_publisher);
         /**
          * @return Argument options 
          */
@@ -144,7 +144,7 @@ namespace nemesis {
          */
         command get_command() const;
         /**
-         * @return Driver executable pathname 
+         * @return driver executable pathname 
          */
         utf8::span pathname() const;
         /**
@@ -194,6 +194,10 @@ namespace nemesis {
             std::cin >> input;
         }
         /**
+         * Checks that command <command> receives no more arguments than expected, where <count> is those received
+         */
+        void check_command_arguments_count(enum command command, unsigned count);
+        /**
          * Executes 'init' command inside current workspace
          */
         void init();
@@ -206,11 +210,23 @@ namespace nemesis {
          */
         void clean();
         /**
+         * Executes `add` command inside current workspace
+         */
+        void add();
+        /**
+         * Executes `remove` command inside current workspace
+         */
+        void remove();
+        /**
+         * Compile source files given a compilation chain
+         */
+        void compile(class compilation& compilation);
+        /**
          * Exit code
          */
         int exit_code_;
         /**
-         * Driver command
+         * driver command
          */
         command command_;
         /**
@@ -220,9 +236,9 @@ namespace nemesis {
         /**
          * Run-time arguments to pass if compile option is not set
          */
-        std::vector<const char*> runtime_args_;
+        std::vector<const char*> arguments_;
         /**
-         * Driver executable pathname
+         * driver executable pathname
          */
         utf8::span pathname_;
         /**

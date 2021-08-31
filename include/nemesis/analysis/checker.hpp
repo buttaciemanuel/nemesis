@@ -66,10 +66,10 @@ namespace nemesis {
             checker* instance_;
         };
         
-        checker(Compilation& compilation) : compilation_(compilation) {}
+        checker(compilation& compilation) : compilation_(compilation) {}
         ~checker();
-        void Check();
-        const Compilation& compilation() const { return compilation_; }
+        void check();
+        const class compilation& compilation() const { return compilation_; }
         source_file& source() const { return *file_; }
         diagnostic_publisher& publisher() const { return compilation_.get_diagnostic_publisher(); }
         environment& scope() const { return *scope_; }
@@ -193,7 +193,7 @@ namespace nemesis {
          * This is the compilation object, which contains the root for all libraries to analyze
          * The order of analysis is the same in which they are declared inside the object
          */
-        Compilation& compilation_;
+        class compilation& compilation_;
         /**
          * Current package name
          */
@@ -236,7 +236,7 @@ namespace nemesis {
     // and for resolving names and types `context` is used as enclosing environment
     class substitutions : public ast::visitor {
     public:
-        substitutions(checker& checker, const environment* context, const ast::node* root) : ast::visitor(), checker_(checker), context_(context), root_(root) {}
+        substitutions(const environment* context, const ast::node* root) : ast::visitor(), context_(context), root_(root) {}
         void put(const ast::declaration* tparam, ast::pointer<ast::type> substitution)
         {
             tsubstitutions.emplace(tparam, substitution);
@@ -345,10 +345,7 @@ namespace nemesis {
         void visit(const ast::use_declaration& decl);
         void visit(const ast::workspace_declaration& decl);
         void visit(const ast::source_unit_declaration& decl);
-        // checker instance
-        checker& checker_;
         // context node, which is the scope for searching
-        //const ast::node* context_;
         const environment* context_;
         // root node from which substitution starts and goes deep into its children
         const ast::node* root_;

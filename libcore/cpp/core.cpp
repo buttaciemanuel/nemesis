@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <mutex>
 #include <unordered_map>
@@ -124,10 +125,11 @@ void __stacktrace()
         __stack_entry entry = __stack_table.top();
         std::vector<std::string> before, after;
         std::string line = __get_line_from_source(entry.file, entry.line, entry.column, before, after);
-        unsigned iline = entry.line - before.size();
+        unsigned iline = entry.line - before.size(), width = entry.line + after.size() < 10 ? 1 : std::log10(entry.line + after.size()) + 1;
         std::cout << "  #" << depth << " " << entry.function  << " at " << entry.file << ":" << entry.line << ":" << entry.column << "\n";
-        for (auto line : before) std::cout << "     " << iline++ << " | " << line << '\n';
-        if (!line.empty()) std::cout << "  -> " << iline++ << " | " << line << '\n';
-        for (auto line : after) std::cout << "     " << iline++ << " | " << line << '\n';
+        if (line.empty()) continue;
+        for (auto line : before) std::cout << "     " << std::setw(width) << iline++ << " | " << line << '\n';
+        std::cout << "  -> " << std::setw(width) << iline++ << " | " << line << '\n';
+        for (auto line : after) std::cout << "     " << std::setw(width) << iline++ << " | " << line << '\n';
     }
 }
