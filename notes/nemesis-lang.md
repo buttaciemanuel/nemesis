@@ -1726,7 +1726,9 @@ use-declaration : <b>use</b> identifier
 
 lib-declaration : <b>lib</b> identifier
 
-source-declaration : lib-declaration? global-declaration*
+app-declaration : <b>app</b> identifier
+
+source-declaration : ( lib-declaration | app-declaration) ? global-declaration*
 </code></pre>
 ---
 

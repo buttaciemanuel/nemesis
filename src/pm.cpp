@@ -6,6 +6,7 @@
 
 #include "nemesis/diagnostics/diagnostic.hpp"
 #include "nemesis/pm/pm.hpp"
+#include "utils/sha256.hpp"
 
 namespace nemesis {
     namespace pm {
@@ -468,6 +469,14 @@ namespace nemesis {
         // this callback is used for writing data from http request to downloaded file
         static std::size_t receive(void* ptr, std::size_t size, std::size_t n, void* stream) { return fwrite(ptr, size, n, reinterpret_cast<std::FILE*>(stream)); }
 
+        // this callback is used for writing data from http request to checksum string
+        static std::size_t receive_checksum(void* ptr, std::size_t size, std::size_t n, void* stream) 
+        { 
+            std::size_t count = size * n;
+            reinterpret_cast<std::string*>(stream)->append(reinterpret_cast<char*>(ptr), count);
+            return count;
+        }
+
         std::list<pm::package> manager::download_package(pm::package& package, pm::lock::info& info)
         {
             // central package registry server
@@ -483,12 +492,12 @@ namespace nemesis {
             // set up url for GET request to download package without version
             if (package.version.empty()) {
                 message("Downloading package `$`...", package.name);
-                curl_easy_setopt(handle, CURLOPT_URL, diagnostic::format("$/?package=$", server, package.name).data());
+                curl_easy_setopt(handle, CURLOPT_URL, diagnostic::format("$/download/$", server, package.name).data());
             }
             // set up url for GET request to download package with specific version
             else {
                 message("Downloading package `$ $`...", package.name, package.version);
-                curl_easy_setopt(handle, CURLOPT_URL, diagnostic::format("$/?package=$&version=$", server, package.name, package.version).data());
+                curl_easy_setopt(handle, CURLOPT_URL, diagnostic::format("$/download/$/?version=$", server, package.name, package.version).data());
             }
             // set write function to add data to file stream
             curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, receive);
@@ -502,12 +511,10 @@ namespace nemesis {
             curl_easy_perform(handle);
             // get information about result
             curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &status);
-            // close file
-            std::fclose(output);
             // operation failure
             if (status != 200) error("I had trouble downloading package `$` from central registry, maybe it doesn't exist...", package.name);
-            // operations success
-            message("Package `$$` downloaded!", package.name, package.version.empty() ? "" : " " + package.version);
+            // close file
+            std::fclose(output);
             // unzip its manifest to get information
             pm::manifest manifest = unzip_package_manifest(package.name, destination);
             // constructs dependencies
@@ -518,8 +525,44 @@ namespace nemesis {
             info.name = manifest.name;
             info.version = manifest.version;
             info.builtin = manifest.builtin;
-            info.hash = "deadbeef";
             info.path = std::string(manager::dependencies_path) + "/" + manifest.name;
+            // this is the expected checksum got from website
+            std::string checksum;
+            // set up url for GET request to download package checksum with specific version (got from downloaded package)
+            message("Downloading package `$ $` checksum...", package.name, manifest.version);
+            curl_easy_setopt(handle, CURLOPT_URL, diagnostic::format("$/checksum/$/?version=$", server, package.name, manifest.version).data());
+            // set write function to add data to checksum string
+            curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, receive_checksum);
+            // set checksum output
+            curl_easy_setopt(handle, CURLOPT_WRITEDATA, &checksum);
+            // make http GET request to download package checksym
+            curl_easy_perform(handle);
+            // get information about result
+            curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &status);
+            // operation failure
+            if (status != 200) error("I had trouble downloading package `$` checksum from central registry, maybe it doesn't exist...", package.name);
+            // reopen zip package archive for hashing its content
+            std::FILE* archive = std::fopen(destination.data(), "r");
+            // get archive size
+            std::fseek(archive, 0, SEEK_END);
+            std::size_t size = std::ftell(archive);
+            std::rewind(archive);
+            // allocate memory for its data
+            char* content = new char[size];
+            // read content into buffer
+            std::fread(content, size, 1, archive);
+            // compute checksum locally with sha256 algorithm
+            std::string digest = utils::sha256().update(reinterpret_cast<std::uint8_t*>(content), size).hexdigest();
+            // free allocated memory
+            delete[] content;
+            // reclose file
+            std::fclose(archive);
+            // verify checksum is correct
+            if (digest != checksum) error("Checksum of package `$ $` doesn't match, got `$` when `$` is expected, f*ck...", package.name, manifest.version, digest, checksum);
+            // set checksum info
+            info.hash = checksum;
+            // operations success
+            message("Package `$$` downloaded!", package.name, package.version.empty() ? "" : " " + package.version);
             // dependencies of current package
             return dependencies;
         }

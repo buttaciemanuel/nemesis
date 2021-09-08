@@ -356,44 +356,8 @@ namespace nemesis {
         message("Let's build your $`$`...", manifest.kind == pm::manifest::kind::app ? "application " : manifest.kind == pm::manifest::kind::lib ? "library " : "", manifest.name);
         // constructs compilation from lock file
         auto compilation = manager.build_compilation_chain(lock);
-        // for each source file
-        // i) it extracts all its tokens
-        // ii) builds its syntax tree
-        for (auto source : source_handler_.sources()) {
-            source_file& file = *source.second;
-            // extraction of tokens
-            tokenizer::tokens tokens;
-            tokenizer tokenizer(file, diagnostic_publisher_);
-            tokenizer.tokenize(tokens);
-            // tokens are printed if option '-tokens' is specified
-            if (options_.is(options::kind::tokens)) message(impl::tokens_to_string(tokens));
-            // construction of syntax tree associated to current file
-            parser parser(tokens, file, diagnostic_publisher_);
-            if (auto ast = parser.parse()) {
-                file.ast(ast);
-                // if option '-ast' is specified then the syntax tree is printed for all sources
-                if (options_.is(options::kind::ast)) message(impl::ast_to_string(file.name(), ast));
-            }
-        }
-        // semantic checking is performed on all packages, so from all source files are costructed workspaces
-        // and definitions inside those are fully analyzed and annotated
-        checker checker(compilation);
-        checker.check();
-        // if errors were detected, then we exit with failure without code generation
-        if (diagnostic_publisher_.errors() > 0) {
-            message("compilation failed due to $ damned errors of yours!", diagnostic_publisher_.errors());
-            exit_code_ = impl::exit::failure;
-            return;
-        }
-        // no errors so far, we can proceed with code generation, which shouldn't give errors if cpp sources are correct
-        code_generator codegen(checker);
-        // trace option will slow down resulting program
-        codegen.trace(options_.is(options::kind::trace));
-        // generation is launched
-        auto targets = codegen.generate();
-        // now compile all targets files and cpp source files to cpp files
-        if (compilation.build(targets)) exit_code_ = impl::exit::success;
-        else exit_code_ = impl::exit::failure;
+        // compile sources following compilation chain
+        compile(compilation);
     }
 
     void driver::clean()
