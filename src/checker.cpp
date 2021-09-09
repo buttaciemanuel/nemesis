@@ -2796,7 +2796,7 @@ namespace nemesis {
                             
                             expr.annotation().type = expr.annotation().type->substitute(expr.annotation().type, map);
                             expr.annotation().isparametric = true;
-                            expr.annotation().substitution = new substitution { map };
+                            expr.annotation().substitution = ast::create<substitution>(map);
                         }
                     }
                 }

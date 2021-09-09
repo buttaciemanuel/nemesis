@@ -66,10 +66,10 @@ namespace nemesis {
             checker* instance_;
         };
         
-        checker(compilation& compilation) : compilation_(compilation) {}
+        checker(nemesis::compilation& compilation) : compilation_(compilation) {}
         ~checker();
         void check();
-        const class compilation& compilation() const { return compilation_; }
+        const class nemesis::compilation& compilation() const { return compilation_; }
         source_file& source() const { return *file_; }
         diagnostic_publisher& publisher() const { return compilation_.get_diagnostic_publisher(); }
         environment& scope() const { return *scope_; }

@@ -171,6 +171,9 @@ namespace nemesis {
         for (auto pair : files_) {
             if (pair.second) delete pair.second;
         }
+        for (auto pair : cpp_files_) {
+            if (pair.second) delete pair.second;
+        }
     }
         
     bool source_handler::load(utf8::span filename)
@@ -190,6 +193,7 @@ namespace nemesis {
 
         if (source->has_type(source_file::filetype::cpp) || source->has_type(source_file::filetype::header)) cpp_files_.emplace(filename, source);
         else if (source->has_type(source_file::filetype::nemesis)) files_.emplace(filename, source);
+        else delete source;
 
         return true;
     }

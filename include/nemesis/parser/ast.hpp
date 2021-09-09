@@ -316,7 +316,7 @@ namespace nemesis {
                 /**
                  * Substitution of generic parameters
                  */
-                const struct substitution* substitution = nullptr;
+                ast::pointer<struct substitution> substitution = nullptr;
                 /**
                  * Constructs an empty annotation
                  */

@@ -266,6 +266,10 @@ namespace nemesis {
              */
             manifest parse_manifest_file_from_buffer(std::istream& stream) const;
             /**
+             * Compress package into in-memory archive considering only project files (manifest, sources)
+             */
+            std::string compress_package_in_memory(std::string package, std::string from) const;
+            /**
              * Unzip package <package> archive at <path> and return its manifest file
              */
             manifest unzip_package_manifest(std::string package, std::string path);

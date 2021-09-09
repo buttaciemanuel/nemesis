@@ -13,7 +13,7 @@
 namespace nemesis {
     namespace ast {
         struct workspace;
-    };
+    }
 
     class compilation {
     public:

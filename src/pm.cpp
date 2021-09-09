@@ -288,15 +288,12 @@ namespace nemesis {
         lock manager::generate_lock_file(pm::manifest manifest, std::string where) try
         {
             lock result;
-            // sets current package
+            // sets current package kind (app or library)
             result.kind = manifest.kind;
-            result.package.name = manifest.name;
-            result.package.version = manifest.version;
-            result.package.builtin = manifest.builtin;
-            result.package.path = std::filesystem::current_path();
-            result.package.hash = "deadbeef";
             // resolution of conflicts by downloading files
             auto graph = resolve(manifest);
+            // set current package info from topological sort (current package in our workspace is graph source vertex)
+            result.package = graph.topological.back();
             // constructs lock file from dependency tree using topological order, last node is package, so it's excluded
             auto dependency = graph.topological.begin();
             // iterates over dependencies excluding package itself
@@ -388,7 +385,7 @@ namespace nemesis {
             // check error
             if (!zarchive) error("I can't unzip archive `$`, dammit!", archive);
             // for each entry of archive
-            for (std::size_t i = 0; i < zip_get_num_entries(zarchive, 0); ++i) {
+            for (auto i = 0; i < zip_get_num_entries(zarchive, 0); ++i) {
                 struct zip_stat stat;
                 zip_stat_init(&stat);
                 // retrieve info of entry at index <i>
@@ -427,6 +424,117 @@ namespace nemesis {
             }
             // closes archive
             zip_close(zarchive);
+        }
+
+        namespace impl {
+            std::string filecontent(std::string path)
+            {
+                std::ostringstream os;
+                std::ifstream in(path, std::ios_base::in);
+                if (!in) throw pm::exception();
+                os << in.rdbuf();
+                return os.str();
+            }
+        }
+
+        std::string manager::compress_package_in_memory(std::string package, std::string from) const
+        {
+            // error code for file system operations
+            std::error_code code;
+            // create source from buffer whose size is directory size
+            zip_source_t* source = zip_source_buffer_create(nullptr, 0, 0, nullptr);
+            // check error
+            if (!source) {
+                error("An error occurred while compressing archive `$`, dammit.", from);
+            }
+            // open zip from source
+            zip_t* archive = zip_open_from_source(source, ZIP_TRUNCATE, nullptr);
+            // check error
+            if (!archive) {
+                zip_source_free(source);
+                error("An error occurred while compressing archive `$`, dammit.", from);
+            }
+            // keep data available after closing zip
+            zip_source_keep(source);
+            // creates root directory
+            zip_dir_add(archive, package.data(), ZIP_FL_ENC_UTF_8);
+            // source for manifest file
+            zip_source_t* buffer = zip_source_file(archive, (from + '/' + manager::manifest_path).data(), 0, 0);
+            // check error
+            if (!buffer) {
+                zip_source_free(source);
+                error("An error occurred while compressing archive `$`, dammit.", from);
+            }
+            // manifest file is added to archive
+            if (zip_file_add(archive, (package + '/' + manager::manifest_path).data(), buffer, ZIP_FL_ENC_UTF_8) < 0) {
+                zip_source_free(source);
+                zip_source_free(buffer);
+                error("An error occurred while compressing archive `$`, dammit.", from);
+            }
+            // create `src` directory
+            zip_dir_add(archive, (package + '/' + manager::sources_path).data(), ZIP_FL_ENC_UTF_8);
+            // add nemesis source files
+            for (auto entry : std::filesystem::recursive_directory_iterator((from + '/' + manager::sources_path).data(), code)) {
+                auto relative = std::filesystem::relative(entry.path(), from + '/' + manager::sources_path, code);
+                auto newpath = package + '/' + manager::sources_path + '/' + relative.string();
+                if (entry.is_directory()) zip_dir_add(archive, newpath.data(), ZIP_FL_ENC_UTF_8);
+                else {
+                    buffer = zip_source_file(archive, entry.path().c_str(), 0, 0);
+                    // check error
+                    if (!buffer) {
+                        zip_source_free(source);
+                        error("An error occurred while compressing archive `$`, dammit.", from);
+                    }
+                    // check error
+                    if (zip_file_add(archive, newpath.data(), buffer, ZIP_FL_ENC_UTF_8) < 0) {
+                        zip_source_free(buffer);
+                        zip_source_free(source);
+                        error("An error occurred while compressing archive `$`, dammit.", from);
+                    }
+                }
+            }
+            // create `cpp` directory
+            zip_dir_add(archive, (package + '/' + manager::cpp_sources_path).data(), ZIP_FL_ENC_UTF_8);
+            // add cpp source files
+            for (auto entry : std::filesystem::recursive_directory_iterator((from + '/' + manager::cpp_sources_path).data(), code)) {
+                auto relative = std::filesystem::relative(entry.path(), from + '/' + manager::cpp_sources_path, code);
+                auto newpath = package + '/' + manager::cpp_sources_path + '/' + relative.string();
+                if (entry.is_directory()) zip_dir_add(archive, newpath.data(), ZIP_FL_ENC_UTF_8);
+                else {
+                    buffer = zip_source_file(archive, entry.path().c_str(), 0, 0);
+                    // check error
+                    if (!buffer) {
+                        zip_source_free(source);
+                        error("An error occurred while compressing archive `$`, dammit.", from);
+                    }
+                    // check error
+                    if (zip_file_add(archive, newpath.data(), buffer, ZIP_FL_ENC_UTF_8) < 0) {
+                        zip_source_free(buffer);
+                        zip_source_free(source);
+                        error("An error occurred while compressing archive `$`, dammit.", from);
+                    }
+                }
+            }
+            // close zip
+            zip_close(archive);
+            // get archive size
+            zip_source_open(source);
+            zip_source_seek(source, 0, SEEK_END);
+            zip_int64_t size = zip_source_tell(source);
+            // allocate buffer
+            char* outbuffer = new char[size];
+            // read data from zip memory source
+            zip_source_seek(source, 0, SEEK_SET);
+            zip_source_read(source, outbuffer, size);
+            zip_source_close(source);
+            // this is result data which is compressed archive
+            std::string result(outbuffer, size);
+            // free data buffer
+            delete[] outbuffer;
+            // release zip buffer
+            zip_source_free(source);
+            // yields result
+            return result;
         }
 
         manifest manager::unzip_package_manifest(std::string package, std::string path)
@@ -525,7 +633,7 @@ namespace nemesis {
             info.name = manifest.name;
             info.version = manifest.version;
             info.builtin = manifest.builtin;
-            info.path = std::string(manager::dependencies_path) + "/" + manifest.name;
+            info.path = std::filesystem::current_path().string() + "/" + std::string(manager::dependencies_path) + "/" + manifest.name;
             // this is the expected checksum got from website
             std::string checksum;
             // set up url for GET request to download package checksum with specific version (got from downloaded package)
@@ -539,6 +647,8 @@ namespace nemesis {
             curl_easy_perform(handle);
             // get information about result
             curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &status);
+            // release handle
+            curl_easy_cleanup(handle);
             // operation failure
             if (status != 200) error("I had trouble downloading package `$` checksum from central registry, maybe it doesn't exist...", package.name);
             // reopen zip package archive for hashing its content
@@ -667,8 +777,12 @@ namespace nemesis {
                 // extracts dependency archive (for example `math.zip`) inside dependency directory (so in `libs`)
                 extract_package_archive(std::string(manager::cache_path) + "/" + package.name + ".zip", manager::dependencies_path);
             }
+            // this is current package compressed so we can compute its sha256 checksum
+            std::string compressed = compress_package_in_memory(manifest.name, std::filesystem::current_path());
+            // package digest (our checksum)
+            std::string digest = utils::sha256().update(reinterpret_cast<std::uint8_t*>(compressed.data()), compressed.size()).hexdigest();
             // source goes last in this case as it's been resolved for last
-            graph.topological.push_back(pm::lock::info { manifest.name, manifest.version, manifest.builtin, "deadbeef", std::filesystem::current_path() });
+            graph.topological.push_back(pm::lock::info { manifest.name, manifest.version, manifest.builtin, digest, std::filesystem::current_path() });
             // remove cache of downloaded libraries
             std::filesystem::remove_all(manager::cache_path, code);
             // yields result
@@ -677,16 +791,20 @@ namespace nemesis {
 
         void manager::load_package_workspace(compilation& compilation, pm::lock::info package, pm::lock lockfile, bool is_dependency) const
         {
+            // error code for file system operations
+            std::error_code code;
             // construct all sources for this workspace
             compilation::sources sources, cpp_sources;
             // traverse sources inside 'src' directory
-            for (auto entry : std::filesystem::directory_iterator(package.path + "/src")) {
+            for (auto entry : std::filesystem::recursive_directory_iterator(package.path + "/src", code)) {
+                if (!entry.is_regular_file()) continue;
                 auto path = utf8::span::builder().concat(entry.path().string().data()).build();
                 if (!source_handler_.load(path)) error("I had some problems opening file `$`, I have to stop here, I am sorry...", path);
                 else sources.push_back(&source_handler_.get(path));
             }
             // traverse sources inside 'cpp' directory to get cpp sources
-            for (auto entry : std::filesystem::directory_iterator(package.path + "/cpp")) {
+            for (auto entry : std::filesystem::recursive_directory_iterator(package.path + "/cpp", code)) {
+                if (!entry.is_regular_file()) continue;
                 auto path = utf8::span::builder().concat(entry.path().string().data()).build();
                 if (!source_handler_.load(path)) error("I had some problems opening file `$`, I have to stop here, I am sorry...", path);
                 else {

@@ -36,6 +36,7 @@ namespace nemesis {
 
     struct substitution {
         std::unordered_map<const ast::declaration*, impl::parameter> map;
+        substitution(const std::unordered_map<const ast::declaration*, impl::parameter>& map) : map(map) {}
     };
 
     namespace ast {

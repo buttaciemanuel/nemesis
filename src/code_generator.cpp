@@ -54,7 +54,7 @@ namespace nemesis {
             // target name
             std::string target = workspace.first + ".cpp";
             // constructs a new file stream
-            new (&output_) filestream(target);
+            output_ = filestream(target);
             // include public header
             output_.stream() << "#include \"__exported.h\"\n";
             // emits all type declarations inside each file
