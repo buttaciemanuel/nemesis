@@ -759,6 +759,35 @@ namespace nemesis {
             }
             else return nullptr;
         }
+        // implicit upcasting/downcasting
+        else if (type->category() == ast::type::category::pointer_type && expression->annotation().type->category() == ast::type::category::pointer_type && types::compatible(type, expression->annotation().type)) {
+            auto resbase = std::static_pointer_cast<ast::pointer_type>(type)->base(), origbase = std::static_pointer_cast<ast::pointer_type>(expression->annotation().type)->base();
+            // upcast
+            if (auto behaviour = std::dynamic_pointer_cast<ast::behaviour_type>(resbase)) {
+                if (behaviour->implementor(origbase)) {
+                    ast::pointer<ast::expression> result = ast::create<ast::implicit_conversion_expression>(expression->range(), expression);
+                    result->annotation().type = type;
+                    return result;
+                }
+                else return nullptr;
+            }
+            // downcast
+            else if (auto behaviour = std::dynamic_pointer_cast<ast::behaviour_type>(origbase)) {
+                if (behaviour->implementor(resbase)) {
+                    ast::pointer<ast::expression> result = ast::create<ast::implicit_conversion_expression>(expression->range(), expression);
+                    result->annotation().type = type;
+                    return result;
+                }
+                else return nullptr;
+            }
+            else if (!types::compatible(type, expression->annotation().type, true)) {
+                ast::pointer<ast::expression> result = ast::create<ast::implicit_conversion_expression>(expression->range(), expression);
+                result->annotation().type = type;
+                return result;
+            }
+
+            return nullptr;
+        }
         // implicit address of
         else if (type->category() == ast::type::category::pointer_type && types::compatible(std::static_pointer_cast<ast::pointer_type>(type)->base(), expression->annotation().type, false)) {
             ast::pointer<ast::expression> result = ast::create<ast::unary_expression>(expression->range(), token(token::kind::amp, utf8::span::builder().concat("&").build(), source_location()), expression);
@@ -9710,6 +9739,19 @@ namespace nemesis {
         }
 
         decl.annotation().resolved = true;
+
+        // check that it is conformant to behaviour if prototype
+        if (auto behaviour = dynamic_cast<const ast::behaviour_declaration*>(scope_->outscope(environment::kind::declaration))) {
+            if (decl.parameters().size() == 0) {
+                decl.invalid(true);
+                report(decl.name().range(), diagnostic::format("Function `$` must take at least parameter one parameter of behaviour type `*$`, idiot.", decl.name().lexeme(), behaviour->name().lexeme()));
+            }
+            else if (!types::compatible(types::pointer(behaviour->annotation().type), decl.parameters().front()->annotation().type)) {
+                decl.invalid(true);
+                report(decl.name().range(), diagnostic::format("Function `$` must take parameter of behaviour type `*$` as first argument, found `$`, idiot.", decl.name().lexeme(), behaviour->annotation().type->string(), decl.parameters().front()->annotation().type->string()));
+            }
+        }
+
         // if not associated function, then it is added to all workspace functions
         if (!decl.generic() && !dynamic_cast<const ast::type_declaration*>(scope_->enclosing())) workspace()->functions.push_back(&decl);
     }
@@ -9832,6 +9874,14 @@ namespace nemesis {
 
         decl.annotation().resolved = true;
         decl.annotation().type = fntype;
+
+        // check that it is conformant to behaviour if prototype
+        if (auto behaviour = dynamic_cast<const ast::behaviour_declaration*>(scope_->outscope(environment::kind::declaration))) {
+            if (!types::compatible(types::pointer(behaviour->annotation().type), decl.parameters().front()->annotation().type)) {
+                decl.invalid(true);
+                report(decl.name().range(), diagnostic::format("Property `$` must take parameter of behaviour type `*$` as first argument, found `$`, idiot.", decl.name().lexeme(), behaviour->annotation().type->string(), decl.parameters().front()->annotation().type->string()));
+            }
+        }
 
         // checks for implicit conversion or operator functions or properties
         if (!decl.invalid() && decl.name().lexeme().string() == "str") {
@@ -10457,7 +10507,7 @@ namespace nemesis {
                 if (behaviour->annotation().type->category() != ast::type::category::behaviour_type) error(behaviour->range(), diagnostic::format("I was expecting behaviour type here, but I found `$`, dammit!", behaviour->annotation().type->string()), "", "expected behaviour");
                 auto behaviour_decl = static_cast<const ast::behaviour_declaration*>(behaviour->annotation().type->declaration());
                 // implements behaviour
-                std::static_pointer_cast<ast::behaviour_type>(behaviour_decl->annotation().type)->implements(decl.type_expression()->annotation().type);
+                types::implements(decl.type_expression()->annotation().type, behaviour_decl->annotation().type);
                 // count of matched prototypes
                 unsigned matches = 0;
                 // for each prototype of the behaviour we verify that it is implemented inside the type extension

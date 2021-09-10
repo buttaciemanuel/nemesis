@@ -556,7 +556,69 @@ namespace nemesis {
 
     void code_generator::visit(const ast::extend_declaration& decl) {}
     
-    void code_generator::visit(const ast::behaviour_declaration& decl) {}
+    void code_generator::visit(const ast::behaviour_declaration& decl) 
+    {
+        if (decl.generic()) return;
+
+        // its virtual table type as a structure
+        {
+            guard guard(output_);
+
+            output_.line() << "struct __vtable_" << fullname(&decl) << " {\n";
+            
+            {
+                struct guard inner(output_);
+                // offset size to determine at which distance (in bytes) the base object (of behavioural type) begins
+                output_.line() << "std::size_t __offset;\n";
+            }
+
+            for (auto prototype : decl.declarations()) {
+                struct guard inner(output_);
+                // function pointers to virtual methods
+                if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.line() << "void (*" << function->name().lexeme() << ")(void*);\n";
+                else if (auto property = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.line() << "void (*" << property->name().lexeme() << ")(void*);\n";
+            }
+
+            output_.line() << "};\n";
+        }
+        // then base type is emitted for upcasting and downcasting (it contains pointer to virtual table)
+        {
+            guard guard(output_);
+
+            output_.line() << prototype(&decl) << " {\n";
+
+            {
+                struct guard inner(output_);
+                
+                output_.line() << "__vtable_" << fullname(&decl) << "* __vptr_" << fullname(&decl) << ";\n";
+            }
+
+            output_.line() << "};\n";
+        }
+        // now emits dispatcher functions which will call directly virtual table functions
+        for (auto proto : decl.declarations()) {
+            if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(proto)) {
+                auto self = std::static_pointer_cast<ast::parameter_declaration>(function->parameters().front())->name().lexeme();
+                output_.line() << "inline " << prototype(function.get()) << " { return ((" << emit(function->annotation().type) << ") " << self << "->__vptr_" << fullname(&decl) << "->" << function->name().lexeme() << ")(";
+                // first argument is object whose real address is computed by using the offset in its virtual table associated to current behaviour
+                output_.stream() << "(" << emit(function->parameters().front()->annotation().type) << ") ((char*) " << self << " - " << self << "->__vptr_" << fullname(&decl) << "->__offset)";
+                for (unsigned i = 1; i < function->parameters().size(); ++i) {
+                    output_.stream() << ", " << std::static_pointer_cast<ast::parameter_declaration>(function->parameters().at(i))->name().lexeme();
+                }
+                output_.stream() << "); }\n";
+            }
+            else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(proto)) {
+                auto self = std::static_pointer_cast<ast::parameter_declaration>(function->parameters().front())->name().lexeme();
+                output_.line() << "inline " << prototype(function.get()) << " { return ((" << emit(function->annotation().type) << ") " << self << "->__vptr_" << fullname(&decl) << "->" << function->name().lexeme() << ")(";
+                // first argument is object whose real address is computed by using the offset in its virtual table associated to current behaviour
+                output_.stream() << "(" << emit(function->parameters().front()->annotation().type) << ") ((char*) " << self << " - " << self << "->__vptr_" << fullname(&decl) << "->__offset)";
+                for (unsigned i = 1; i < function->parameters().size(); ++i) {
+                    output_.stream() << ", " << std::static_pointer_cast<ast::parameter_declaration>(function->parameters().at(i))->name().lexeme();
+                }
+                output_.stream() << "); }\n";
+            }
+        }
+    }
     
     void code_generator::visit(const ast::extern_declaration& decl) {}
     
@@ -570,15 +632,87 @@ namespace nemesis {
             guard guard(output_);
 
             output_.line() << prototype(&decl) << " {\n";
+            // first emits vpointers if any
+            if (types::implementors().count(decl.annotation().type)) {
+                struct guard inner(output_);
 
+                for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                    auto bname = fullname(behaviour->declaration());
+                    output_.line() << "__vtable_" << bname << "* __vptr_" << bname << ";\n";
+                }
+            }
+            // then fields
             for (auto field : decl.fields()) field->accept(*this);
-
+            // prototype of constructor for fields
+            {
+                struct guard inner(output_);
+                unsigned ifield = 0;
+                output_.line() << emit(decl.annotation().type) << "(";
+                for (auto field : decl.fields()) {
+                    if (ifield > 0) output_.stream() << ", "; 
+                    output_.stream() << emit(field->annotation().type, std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string());
+                    ++ifield;
+                }
+                output_.stream() << ");\n";
+            }
             output_.line() << "};\n";
         }
 
         if (checker_.scopes().count(&decl)) {
             for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
             for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
+        }
+
+        // emit vtables for this type
+        if (types::implementors().count(decl.annotation().type)) {
+            struct guard inner(output_);
+
+            for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                auto bname = fullname(behaviour->declaration());
+                output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
+                // set offset of this vptr inside structure
+                output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
+                // fill vtable with function pointers
+                for (auto prototype : static_cast<const ast::behaviour_declaration*>(behaviour->declaration())->declarations()) {
+                    output_.stream() << ", ";
+                    if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                    else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                }
+                output_.stream() << " };\n";
+            }
+        }
+
+        // emit constructor initializing virtual pointers eventually
+        {
+            struct guard inner(output_);
+            unsigned ifield = 0;
+            output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "(";
+            for (auto field : decl.fields()) {
+                if (ifield > 0) output_.stream() << ", "; 
+                output_.stream() << emit(field->annotation().type, std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string());
+                ++ifield;
+            }
+            output_.stream() << ") : ";
+            ifield = 0;
+            // initialize vpointers
+            if (types::implementors().count(decl.annotation().type)) {
+                struct guard inner(output_);
+
+                for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                    auto bname = fullname(behaviour->declaration());
+                    if (ifield > 0) output_.stream() << ", ";
+                    output_.stream() << "__vptr_" << bname << "(&__vtable_" << bname << "_for_" << emit(decl.annotation().type) << ")";
+                    ++ifield;
+                }
+            }
+            // initialize fields
+            for (auto field : decl.fields()) {
+                auto fname = std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string();
+                if (ifield > 0) output_.stream() << ", ";
+                output_.stream() << fname << "(" << fname << ")";
+                ++ifield;
+            }
+            output_.stream() << " {}\n";
         }
     }
     
@@ -808,7 +942,7 @@ namespace nemesis {
                 // stack activation record for stacktrace
                 output_.stream() << "#if __DEVELOPMENT__\n";
                 output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
-                output_.stream() << "#endif";
+                output_.stream() << "#endif\n";
                 // contracts
                 emit_in_contracts(decl);
             }
@@ -973,6 +1107,26 @@ namespace nemesis {
                     output_.stream() << emit(original) << "_as_" << std::hash<std::string>()(result->string()) << "(";
                     expr.left()->accept(*this);
                     output_.stream() << ", \"" << expr.binary_operator().location().filename << "\", " << expr.binary_operator().location().line << ", " << expr.binary_operator().location().column << ")";
+                }
+                // implicit upcasting
+                else if (result->category() == ast::type::category::pointer_type && std::static_pointer_cast<ast::pointer_type>(result)->base()->category() == ast::type::category::behaviour_type && original->category() == ast::type::category::pointer_type) {
+                    auto implementor = std::static_pointer_cast<ast::pointer_type>(original)->base();
+                    auto behaviour = std::static_pointer_cast<ast::behaviour_type>(std::static_pointer_cast<ast::pointer_type>(result)->base());
+                    if (behaviour->implementor(implementor)) {
+                        output_.stream() << "(" << emit(result) << ") ((char*) ";
+                        expr.left()->accept(*this);
+                        output_.stream() << " + offsetof(" << emit(implementor) << ", __vptr_" << emit(behaviour) << "))";
+                    }
+                }
+                // implicit downcast
+                else if (original->category() == ast::type::category::pointer_type && std::static_pointer_cast<ast::pointer_type>(original)->base()->category() == ast::type::category::behaviour_type && result->category() == ast::type::category::pointer_type) {
+                    auto implementor = std::static_pointer_cast<ast::pointer_type>(result)->base();
+                    auto behaviour = std::static_pointer_cast<ast::behaviour_type>(std::static_pointer_cast<ast::pointer_type>(original)->base());
+                    if (behaviour->implementor(implementor)) {
+                        output_.stream() << "(" << emit(result) << ") ((char*) ";
+                        expr.left()->accept(*this);
+                        output_.stream() << " - offsetof(" << emit(implementor) << ", __vptr_" << emit(behaviour) << "))";
+                    }
                 }
                 else switch (result->category()) {
                     case ast::type::category::chars_type:
@@ -1320,6 +1474,26 @@ namespace nemesis {
             if (!variant->contains(result)) throw std::invalid_argument("code_generator::visit(const ast::implicit_conversion_expression&): invalid variant conversion");
             expr.expression()->accept(*this);
             output_.stream() << "._" << std::hash<std::string>()(result->string());
+        }
+        // implicit upcasting
+        else if (result->category() == ast::type::category::pointer_type && std::static_pointer_cast<ast::pointer_type>(result)->base()->category() == ast::type::category::behaviour_type && original->category() == ast::type::category::pointer_type) {
+            auto implementor = std::static_pointer_cast<ast::pointer_type>(original)->base();
+            auto behaviour = std::static_pointer_cast<ast::behaviour_type>(std::static_pointer_cast<ast::pointer_type>(result)->base());
+            if (behaviour->implementor(implementor)) {
+                output_.stream() << "(" << emit(result) << ") ((char*) ";
+                expr.expression()->accept(*this);
+                output_.stream() << " + offsetof(" << emit(implementor) << ", __vptr_" << emit(behaviour) << "))";
+            }
+        }
+        // implicit downcast
+        else if (original->category() == ast::type::category::pointer_type && std::static_pointer_cast<ast::pointer_type>(original)->base()->category() == ast::type::category::behaviour_type && result->category() == ast::type::category::pointer_type) {
+            auto implementor = std::static_pointer_cast<ast::pointer_type>(result)->base();
+            auto behaviour = std::static_pointer_cast<ast::behaviour_type>(std::static_pointer_cast<ast::pointer_type>(original)->base());
+            if (behaviour->implementor(implementor)) {
+                output_.stream() << "(" << emit(result) << ") ((char*) ";
+                expr.expression()->accept(*this);
+                output_.stream() << " - offsetof(" << emit(implementor) << ", __vptr_" << emit(behaviour) << "))";
+            }
         }
         else switch (result->category()) {
             case ast::type::category::chars_type:

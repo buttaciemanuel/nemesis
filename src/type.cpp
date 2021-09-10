@@ -447,7 +447,7 @@ namespace nemesis {
         if (implementors_.find(implementor) == implementors_.end()) implementors_.emplace(implementor, std::set<ast::pointer<ast::type>> { behaviour });
         else implementors_[implementor].insert(behaviour);
 
-        std::static_pointer_cast<ast::behaviour_type>(behaviour)->implementor(implementor);
+        std::static_pointer_cast<ast::behaviour_type>(behaviour)->implements(implementor);
     }
 
     void types::extends(const ast::declaration* extender, ast::pointer<ast::type> type)
