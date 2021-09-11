@@ -1600,7 +1600,17 @@ namespace nemesis {
                 ast::pointer<ast::expression> body = expect(block_expression(), "body", "I expect when body here!", impl::when_expr_explanation);
 
                 if (match(token::kind::else_kw)) {
-                    else_body = expect(block_expression(), "body", "I need else body after `else`, don't you think?", impl::when_expr_explanation);
+                    if (current().is(token::kind::if_kw)) {
+                        else_body = if_expression();
+                    }
+                    else if (current().is(token::kind::when_kw)) {
+                        else_body = when_expression();
+                    }
+                    else {
+                        else_body = block_expression();
+                    }
+
+                    expect(else_body, "body", diagnostic::format("I need else body after `$`, don't you think?", previous().lexeme()), impl::when_expr_explanation);
                 }
 
                 return ast::create<ast::when_pattern_expression>(source_range(saved.iter->location(), previous().range().end()), condition, pattern, body, else_body);
@@ -1610,7 +1620,17 @@ namespace nemesis {
                 ast::pointer<ast::expression> body = expect(block_expression(), "body", "I expect when body here!", impl::when_expr_explanation);
 
                 if (match(token::kind::else_kw)) {
-                    else_body = expect(block_expression(), "body", "I need else body after `else`, don't you think?", impl::when_expr_explanation);
+                    if (current().is(token::kind::if_kw)) {
+                        else_body = if_expression();
+                    }
+                    else if (current().is(token::kind::when_kw)) {
+                        else_body = when_expression();
+                    }
+                    else {
+                        else_body = block_expression();
+                    }
+
+                    expect(else_body, "body", diagnostic::format("I need else body after `$`, don't you think?", previous().lexeme()), impl::when_expr_explanation);
                 }
 
                 return ast::create<ast::when_cast_expression>(source_range(saved.iter->location(), previous().range().end()), condition, type, body, else_body);
@@ -1655,7 +1675,17 @@ namespace nemesis {
                 parenthesis(token::kind::right_brace, "You forgot `}` after when body, dammit!", impl::when_expr_explanation, open);
 
                 if (match(token::kind::else_kw)) {
-                    else_body = expect(block_expression(), "body", "I need else body after `else`, don't you think?", impl::when_expr_explanation);
+                    if (current().is(token::kind::if_kw)) {
+                        else_body = if_expression();
+                    }
+                    else if (current().is(token::kind::when_kw)) {
+                        else_body = when_expression();
+                    }
+                    else {
+                        else_body = block_expression();
+                    }
+
+                    expect(else_body, "body", diagnostic::format("I need else body after `$`, don't you think?", previous().lexeme()), impl::when_expr_explanation);
                 }
 
                 return ast::create<ast::when_expression>(source_range(saved.iter->location(), previous().range().end()), condition, branches, else_body);
@@ -1693,7 +1723,17 @@ namespace nemesis {
                 ast::pointer<ast::expression> else_body = nullptr;
 
                 if (match(token::kind::else_kw)) {
-                    else_body = expect(block_expression(), "body", "I need else body after `else`, don't you think?", impl::for_expr_explanation);
+                    if (current().is(token::kind::if_kw)) {
+                        else_body = if_expression();
+                    }
+                    else if (current().is(token::kind::when_kw)) {
+                        else_body = when_expression();
+                    }
+                    else {
+                        else_body = block_expression();
+                    }
+
+                    expect(else_body, "body", diagnostic::format("I need else body after `$`, don't you think?", previous().lexeme()), impl::for_expr_explanation);
                 }
 
                 return ast::create<ast::for_range_expression>(source_range(saved.iter->location(), previous().range().end()), declaration, condition, body, else_body, contracts);
@@ -1705,7 +1745,17 @@ namespace nemesis {
                 ast::pointer<ast::expression> else_body = nullptr;
 
                 if (match(token::kind::else_kw)) {
-                    else_body = expect(block_expression(), "body", "I expect else body after `else`, idiot!", impl::for_expr_explanation);
+                    if (current().is(token::kind::if_kw)) {
+                        else_body = if_expression();
+                    }
+                    else if (current().is(token::kind::when_kw)) {
+                        else_body = when_expression();
+                    }
+                    else {
+                        else_body = block_expression();
+                    }
+
+                    expect(else_body, "body", diagnostic::format("I need else body after `$`, don't you think?", previous().lexeme()), impl::for_expr_explanation);
                 }
 
                 return ast::create<ast::for_loop_expression>(source_range(saved.iter->location(), previous().range().end()), condition, body, else_body, contracts);
@@ -1728,6 +1778,9 @@ namespace nemesis {
             if (match(token::kind::else_kw)) {
                 if (current().is(token::kind::if_kw)) {
                     else_body = if_expression();
+                }
+                else if (current().is(token::kind::when_kw)) {
+                    else_body = when_expression();
                 }
                 else {
                     else_body = block_expression();
@@ -1875,7 +1928,7 @@ namespace nemesis {
         state saved = state_;
 
         if (match(token::kind::return_kw)) {
-            if (previous().eol || current().is(token::kind::semicolon)) {
+            if (previous().eol || current().is(token::kind::semicolon) || current().is(token::kind::right_brace)) {
                 match(token::kind::semicolon);
                 return ast::create<ast::return_statement>(previous().range(), nullptr);
             }

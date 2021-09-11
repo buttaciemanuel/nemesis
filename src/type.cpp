@@ -101,6 +101,14 @@ namespace nemesis {
             return false;
         }
 
+        std::string pointer_type::string(bool absolute) const 
+        {
+            if (base_->category() == ast::type::category::variant_type && !base_->declaration() && std::static_pointer_cast<ast::variant_type>(base_)->types().size() > 1) {
+                return "*{ " + base_->string() + " }";
+            }
+            return "*" + base_->string(); 
+        }
+
         bool pointer_type_expression::is_parametric() const
         {
             return std::static_pointer_cast<ast::type_expression>(pointee_type_)->is_parametric();   

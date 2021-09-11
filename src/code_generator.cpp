@@ -696,8 +696,6 @@ namespace nemesis {
             ifield = 0;
             // initialize vpointers
             if (types::implementors().count(decl.annotation().type)) {
-                struct guard inner(output_);
-
                 for (auto behaviour : types::implementors().at(decl.annotation().type)) {
                     auto bname = fullname(behaviour->declaration());
                     if (ifield > 0) output_.stream() << ", ";
@@ -727,6 +725,13 @@ namespace nemesis {
 
             {
                 struct guard inner(output_);
+                // first emits vpointers if any
+                if (types::implementors().count(decl.annotation().type)) {
+                    for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                        auto bname = fullname(behaviour->declaration());
+                        output_.line() << "__vtable_" << bname << "* __vptr_" << bname << ";\n";
+                    }
+                }
                 // tag field is used to identify current type
                 output_.line() << "std::size_t __tag;\n";
                 // for each subtype there exists a field whose name is the hash of type name inside an anonymous union (no duplicate types!!)
@@ -742,25 +747,91 @@ namespace nemesis {
                 
                 output_.line() << "};\n";
 
-                // constructor, copy-constructor and destructor are defined for non-trivial members of the union
-                output_.line() << emit(decl.annotation().type) << "() {}\n";
+                // definitions of routine functions for non-trivial members of the union
+                // constructor
+                output_.line() << emit(decl.annotation().type) << "();\n";
+                // copy constructor
                 output_.line() << emit(decl.annotation().type) << "(const " << emit(decl.annotation().type) << "& other) : __tag(other.__tag) {\n";
                 {
                     struct guard inner(output_);
                     output_.line() << "switch (other.__tag) {\n";
                     for (auto subtype : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
                         auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
-                        output_.line() << "case " << hash << "ull: _" << hash << " = other._" << hash << "; break;\n";
+                        output_.line() << "case " << hash << "ull: new(&_" << hash << ") " << emit(subtype) << "(other._" << hash << "); break;\n"; 
                     }
                     output_.line() << "default: break;\n";
                     output_.line() << "}\n";
                 }
                 output_.line() << "}\n";
+                // copy assignment
+                output_.line() << "void operator=(const " << emit(decl.annotation().type) << "& other) {\n";
+                {
+                    struct guard inner(output_);
+                    output_.line() << "__tag = other.__tag;\n";
+                    output_.line() << "switch (other.__tag) {\n";
+                    for (auto subtype : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
+                        auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
+                        output_.line() << "case " << hash << "ull: new(&_" << hash << ") " << emit(subtype) << "(other._" << hash << "); break;\n";
+                    }
+                    output_.line() << "default: break;\n";
+                    output_.line() << "}\n";
+                }
+                output_.line() << "}\n";
+                // destructor
                 output_.line() << "~" << emit(decl.annotation().type) << "() {}\n";
             }
 
             output_.line() << "};\n";
         }
+
+        // emit designated initializers' prototypes for each variant type
+        for (auto type : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
+            struct guard inner(output_);
+            auto hash = std::to_string(std::hash<std::string>()(type->string()));
+            // emits constructor for each of its types
+            output_.line() << emit(decl.annotation().type) << " " << emit(decl.annotation().type) << "_init_" << hash << "(" << emit(type, "init") << ");\n";
+            // then emits explicit conversions to each of its types
+            output_.line() << emit(type) << " " << emit(decl.annotation().type) << "_as_" << hash << "(" << emit(decl.annotation().type, "self") << ", const char* file, int line, int column);\n";
+        }
+
+        if (checker_.scopes().count(&decl)) {
+            for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
+            for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
+        }
+
+        // emit vtables for this type
+        if (types::implementors().count(decl.annotation().type)) {
+            struct guard inner(output_);
+
+            for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                auto bname = fullname(behaviour->declaration());
+                output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
+                // set offset of this vptr inside structure
+                output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
+                // fill vtable with function pointers
+                for (auto prototype : static_cast<const ast::behaviour_declaration*>(behaviour->declaration())->declarations()) {
+                    output_.stream() << ", ";
+                    if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                    else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                }
+                output_.stream() << " };\n";
+            }
+        }
+
+        // emit basic constructor filling vpointers eventyally
+        output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "()";
+        // initialize vpointers
+        if (types::implementors().count(decl.annotation().type)) {
+            output_.stream() << " : ";
+            unsigned ifield = 0;
+            for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                auto bname = fullname(behaviour->declaration());
+                if (ifield > 0) output_.stream() << ", ";
+                output_.stream() << "__vptr_" << bname << "(&__vtable_" << bname << "_for_" << emit(decl.annotation().type) << ")";
+                ++ifield;
+            }
+        }
+        output_.stream() << " {}\n";
 
         // create designated initializers for each variant type
         for (auto type : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
@@ -774,7 +845,7 @@ namespace nemesis {
                 struct guard inner(output_);
                 output_.line() << emit(decl.annotation().type, "result") << ";\n";
                 output_.line() << "result.__tag = " << hash << "ull;\n";
-                output_.line() << "result._" << hash << " = init;\n";
+                output_.line() << "new(&result._" << hash << ") " << emit(type) << "(init);\n";
                 output_.line() << "return result;\n";
             }
 
@@ -790,11 +861,6 @@ namespace nemesis {
             }
 
             output_.line() << "}\n";
-        }
-
-        if (checker_.scopes().count(&decl)) {
-            for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
-            for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
         }
     }
 
@@ -901,6 +967,7 @@ namespace nemesis {
                     auto stmts = ast::pointers<ast::statement>();
                     stmts.push_back(ast::create<ast::expression_statement>(decl.body()->range(), decl.body()));
                     auto body = ast::create<ast::block_expression>(decl.body()->range(), stmts);
+                    checker_.scopes().emplace(body.get(), new environment(body.get(), checker_.scopes().at(&decl)));
                     body->exprnode() = stmts.front().get();
                     body->annotation().type = decl.body()->annotation().type;
                     decl.body() = body;
@@ -959,6 +1026,7 @@ namespace nemesis {
                     auto stmts = ast::pointers<ast::statement>();
                     stmts.push_back(ast::create<ast::expression_statement>(decl.body()->range(), decl.body()));
                     auto body = ast::create<ast::block_expression>(decl.body()->range(), stmts);
+                    checker_.scopes().emplace(body.get(), new environment(body.get(), checker_.scopes().at(&decl)));
                     body->exprnode() = stmts.front().get();
                     body->annotation().type = decl.body()->annotation().type;
                     decl.body() = body;
@@ -1018,6 +1086,8 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
+        output_.stream() << "(";
+
         switch (expr.unary_operator().kind()) {
             case token::kind::plus:
                 output_.stream() << "+";
@@ -1048,6 +1118,8 @@ namespace nemesis {
         }
 
         expr.expression()->accept(*this);
+
+        output_.stream() << ")";
     }
 
     void code_generator::visit(const ast::binary_expression& expr) 
@@ -1252,28 +1324,38 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
-        output_.stream() << "{";
-        
-        for (unsigned i = 0; i < expr.elements().size(); ++i) {
-            if (i > 0) output_.stream() << ", ";
-            expr.elements().at(i)->accept(*this);
-        }
+        // array initializer has been bound to array object so that it could be allocated on stack
+        if (auto temporary = dynamic_cast<const ast::var_declaration*>(expr.annotation().referencing)) output_.stream() << temporary->name().lexeme();
+        // this is the real binding
+        else {
+            output_.stream() << "{";
+            
+            for (unsigned i = 0; i < expr.elements().size(); ++i) {
+                if (i > 0) output_.stream() << ", ";
+                expr.elements().at(i)->accept(*this);
+            }
 
-        output_.stream() << "}";
+            output_.stream() << "}";
+        }
     }
     
     void code_generator::visit(const ast::array_sized_expression& expr) 
     {
         if (emit_if_constant(expr)) return;
 
-        output_.stream() << "{";
-        
-        for (unsigned i = 0; i < expr.size()->annotation().value.u.value(); ++i) {
-            if (i > 0) output_.stream() << ", ";
-            expr.value()->accept(*this);
-        }
+        // array initializer has been bound to array object so that it could be allocated on stack
+        if (auto temporary = dynamic_cast<const ast::var_declaration*>(expr.annotation().referencing)) output_.stream() << temporary->name().lexeme();
+        // this is the real binding
+        else {
+            output_.stream() << "{";
+            
+            for (unsigned i = 0; i < expr.size()->annotation().value.u.value(); ++i) {
+                if (i > 0) output_.stream() << ", ";
+                expr.value()->accept(*this);
+            }
 
-        output_.stream() << "}";
+            output_.stream() << "}";
+        }
     }
     
     void code_generator::visit(const ast::parenthesis_expression& expr) 
@@ -1800,7 +1882,10 @@ namespace nemesis {
         output_.stream() << "#endif\n";
 
         if (stmt.expression()) {
-            switch (stmt.expression()->kind()) {
+            if (types::compatible(types::unit(), stmt.expression()->annotation().type)) {
+                output_.line() << "return";
+            }
+            else switch (stmt.expression()->kind()) {
                 case ast::kind::if_expression:
                 case ast::kind::when_cast_expression:
                 case ast::kind::when_pattern_expression:
@@ -1822,7 +1907,13 @@ namespace nemesis {
                     stmt.expression()->accept(*this);
             }
         }
-        else output_.line() << "return";
+        else {
+            auto outer = checker_.scopes().at(stmt.annotation().scope)->outscope(environment::kind::function);
+            // check if we are inside entry point
+            if (outer && outer == checker_.entry_point()) output_.line() << "return 0";
+            // otherwise
+            else output_.line() << "return";
+        }
 
         output_.stream() << ";\n";
     }

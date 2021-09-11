@@ -270,7 +270,7 @@ namespace nemesis {
         scope_ = scope_->parent();
     }
 
-    void checker::add_to_scope(environment* scope, ast::pointer<ast::declaration> decl, const ast::statement* after) const
+    void checker::add_to_scope(environment* scope, ast::pointer<ast::declaration> decl, const ast::statement* after, bool is_after) const
     {
         switch (scope->enclosing()->kind()) {
             case ast::kind::source_unit_declaration:
@@ -279,14 +279,16 @@ namespace nemesis {
                 workspace()->globals.push_back(decl.get());
                 auto source_unit = std::static_pointer_cast<ast::source_unit_declaration>(file_->ast());
                 auto pos = std::find_if(source_unit->statements().begin(), source_unit->statements().end(), [&] (ast::pointer<ast::statement> stmt) { return stmt.get() == after; });
-                source_unit->statements().insert(++pos, decl);
+                if (is_after) source_unit->statements().insert(++pos, decl);
+                else source_unit->statements().insert(pos, decl);
                 break;
             }
             case ast::kind::block_expression:
             {
                 auto block = static_cast<const ast::block_expression*>(scope->enclosing());
                 auto pos = std::find_if(block->statements().begin(), block->statements().end(), [&] (ast::pointer<ast::statement> stmt) { return stmt.get() == after; });
-                block->statements().insert(++pos, decl);
+                if (is_after) block->statements().insert(++pos, decl);
+                else block->statements().insert(pos, decl);
                 break;
             }
             default:
@@ -1672,13 +1674,38 @@ namespace nemesis {
 
     void checker::visit(const ast::variant_type_expression& expr) 
     {
+        std::vector<std::pair<ast::pointer<ast::type>, source_range>> map;
         ast::types types;
 
         expr.annotation().istype = true;
         
         for (auto typexpr : expr.types()) {
             typexpr->accept(*this);
-            types.push_back(typexpr->annotation().type);
+
+            auto other = std::find_if(map.begin(), map.end(), [&](const std::pair<ast::pointer<ast::type>, source_range>& p) {
+                return types::compatible(p.first, typexpr->annotation().type);
+            });
+            
+            if (other != map.end()) {
+                auto diag = diagnostic::builder()
+                            .location(typexpr->range().begin())
+                            .severity(diagnostic::severity::error)
+                            .message(diagnostic::format("You have already included type `$` inside this variant, idiot!", typexpr->annotation().type->string()))
+                            .highlight(typexpr->range(), "conflicting")
+                            .note(other->second, "Here's the same type, you f*cker!")
+                            .build();
+                
+                publisher().publish(diag);
+            }
+            // behaviour cannot be instantiated, so it is not valid as variant type
+            else if (typexpr->annotation().type->category() == ast::type::category::behaviour_type) {
+                expr.invalid(true);
+                report(typexpr->range(), diagnostic::format("You can't use behaviour `$` as variant type because it cannot be instantiated, c*nt!", typexpr->annotation().type->string()));
+            }
+            else {
+                map.emplace_back(typexpr->annotation().type, typexpr->range());
+                types.push_back(typexpr->annotation().type);
+            }
         }
 
         expr.annotation().type = types::variant(types);
@@ -3306,6 +3333,14 @@ namespace nemesis {
         }
 
         expr.annotation().type = types::array(base, expr.elements().size());
+        // temporary array must be instantiated and bound to an array object, otherwise it won't be allocated on stack
+        auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, expr.clone());
+        binding->annotation().type = expr.annotation().type;
+        binding->annotation().scope = scope_->enclosing();
+        // later insertion before use
+        pending_insertions.emplace_back(scope_, binding, statement_, false);
+        // referencing
+        expr.annotation().referencing = binding.get();
     }
 
     void checker::visit(const ast::array_sized_expression& expr) 
@@ -3342,6 +3377,15 @@ namespace nemesis {
                 expr.annotation().type = types::array(expr.value()->annotation().type, expr.size()->annotation().value.u.value());
             }
         }
+
+        // temporary array must be instantiated and bound to an array object, otherwise it won't be allocated on stack
+        auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, expr.clone());
+        binding->annotation().type = expr.annotation().type;
+        binding->annotation().scope = scope_->enclosing();
+        // later insertion before use
+        pending_insertions.emplace_back(scope_, binding, statement_, false);
+        // referencing
+        expr.annotation().referencing = binding.get();
     }
 
     void checker::visit(const ast::parenthesis_expression& expr) 
@@ -3768,15 +3812,17 @@ namespace nemesis {
         // extern blocks
         // variables
         // type of the whole expression
-        for (ast::pointer<ast::node> stmt : expr.statements()) {
+        for (ast::pointer<ast::statement> stmt : expr.statements()) {
             // these were already fully checked
             if (std::dynamic_pointer_cast<ast::type_declaration>(stmt) || std::dynamic_pointer_cast<ast::const_declaration>(stmt) || std::dynamic_pointer_cast<ast::const_tupled_declaration>(stmt) || std::dynamic_pointer_cast<ast::extend_declaration>(stmt)) continue;
             // already resolved, like when variable which is automatically casted
             if (auto decl = std::dynamic_pointer_cast<ast::declaration>(stmt)) {
                 if (decl->annotation().resolved) continue;
             }
+            // current statement
+            statement_ = stmt.get();
             // other statement to check
-            try { 
+            try {
                 stmt->accept(*this); 
             }
             catch (cyclic_symbol_error& err) {
@@ -3795,6 +3841,8 @@ namespace nemesis {
                 // restore scope
                 scope_ = saved;
             }
+            // set current statement
+            statement_ = nullptr;
         }
         // contracts at exit
         for (auto contract : contracts) {
@@ -3815,6 +3863,21 @@ namespace nemesis {
                     expr.exprnode() = block->exprnode();
                 }
                 else expr.exprnode() = stmt.get();
+            }
+            // return statement
+            else if (auto stmt = std::dynamic_pointer_cast<ast::return_statement>(expr.statements().back())) {
+                if (stmt->expression()) {
+                    expr.annotation().type = stmt->expression()->annotation().type;
+                    // set exprnode
+                    if (auto block = std::dynamic_pointer_cast<ast::block_expression>(stmt->expression())) {
+                        expr.exprnode() = block->exprnode();
+                    }
+                    else expr.exprnode() = stmt.get();
+                }
+                else {
+                    expr.annotation().type = types::unit();
+                    expr.exprnode() = stmt.get();
+                }
             }
             // otherwise last statement was not an expression, this means unit type
             else expr.annotation().type = types::unit();
@@ -8840,7 +8903,20 @@ namespace nemesis {
                 if (fndecl->return_type_expression()) expected = fndecl->return_type_expression()->annotation().type;
                 else expected = types::unit();
 
-                if (expected->category() != ast::type::category::unknown_type &&
+                if (!stmt.expression()) {
+                    if (!types::assignment_compatible(expected, types::unit())) {
+                        auto builder = diagnostic::builder()
+                                        .severity(diagnostic::severity::error)
+                                        .location(stmt.range().begin())
+                                        .message(diagnostic::format("Function `$` expects return type `$` but I found type `()` instead, idiot!", fndecl->name().lexeme(), expected->string()))
+                                        .highlight(stmt.range());
+
+                        if (fndecl->return_type_expression()) builder.note(fndecl->return_type_expression()->range(), diagnostic::format("You can see that return type of function `$` is `$`.", fndecl->name().lexeme(), expected->string()));
+
+                        publisher().publish(builder.build());
+                    }
+                }
+                else if (expected->category() != ast::type::category::unknown_type &&
                     stmt.expression()->annotation().type->category() != ast::type::category::unknown_type &&
                     !types::assignment_compatible(expected, stmt.expression()->annotation().type)) {
                     auto builder = diagnostic::builder()
@@ -8860,7 +8936,20 @@ namespace nemesis {
                 if (fndecl->return_type_expression()) expected = fndecl->return_type_expression()->annotation().type;
                 else expected = types::unit();
 
-                if (expected->category() != ast::type::category::unknown_type &&
+                if (!stmt.expression()) {
+                    if (!types::assignment_compatible(expected, types::unit())) {
+                        auto builder = diagnostic::builder()
+                                        .severity(diagnostic::severity::error)
+                                        .location(stmt.range().begin())
+                                        .message(diagnostic::format("Property `$` expects return type `$` but I found type `()` instead, idiot!", fndecl->name().lexeme(), expected->string()))
+                                        .highlight(stmt.range());
+
+                        if (fndecl->return_type_expression()) builder.note(fndecl->return_type_expression()->range(), diagnostic::format("You can see that return type of property `$` is `$`.", fndecl->name().lexeme(), expected->string()));
+
+                        publisher().publish(builder.build());
+                    }
+                }
+                else if (expected->category() != ast::type::category::unknown_type &&
                     stmt.expression()->annotation().type->category() != ast::type::category::unknown_type &&
                     !types::assignment_compatible(expected, stmt.expression()->annotation().type)) {
                     auto builder = diagnostic::builder()
@@ -8880,7 +8969,20 @@ namespace nemesis {
                 if (fnexpr->return_type_expression()) expected = fnexpr->return_type_expression()->annotation().type;
                 else expected = types::unit();
 
-                if (expected->category() != ast::type::category::unknown_type &&
+                if (!stmt.expression()) {
+                    if (!types::assignment_compatible(expected, types::unit())) {
+                        auto builder = diagnostic::builder()
+                                        .severity(diagnostic::severity::error)
+                                        .location(stmt.range().begin())
+                                        .message(diagnostic::format("I was expecting return type `$` but I found type `()` instead, idiot!", expected->string()))
+                                        .highlight(stmt.range());
+
+                        if (fnexpr->return_type_expression()) builder.note(fnexpr->return_type_expression()->range(), diagnostic::format("You can see that return type of function expression is `$`.", expected->string()));
+
+                        publisher().publish(builder.build());
+                    }
+                }
+                else if (expected->category() != ast::type::category::unknown_type &&
                     stmt.expression()->annotation().type->category() != ast::type::category::unknown_type &&
                     !types::assignment_compatible(expected, stmt.expression()->annotation().type)) {
                     auto builder = diagnostic::builder()
@@ -9097,6 +9199,14 @@ namespace nemesis {
             }
         }
 
+        // for array binding
+        if (decl.annotation().type->category() == ast::type::category::array_type && decl.value() && (decl.value()->kind() == ast::kind::array_expression || decl.value()->kind() == ast::kind::array_sized_expression)) {
+            // remove temporary from stack allocation
+            pending_insertions.remove_if([&] (const decltype(pending_insertions)::value_type& t) { return decl.value()->annotation().referencing == std::get<1>(t).get(); });
+            // remove reference
+            decl.value()->annotation().referencing = nullptr;
+        }
+
         decl.annotation().resolved = true;
         if (decl.annotation().type) decl.annotation().type->mutability = decl.is_mutable();
         else decl.annotation().type = types::unknown();
@@ -9191,7 +9301,7 @@ namespace nemesis {
         // this is done for smart pointers management
         workspace()->saved.push_back(clone);
         // add artificial var declaration to current scope
-        pending_insertions.emplace_back(scope_, clone, &decl);
+        pending_insertions.emplace_back(scope_, clone, &decl, true);
 
         scope_->value(structured_name, clone.get());
 
@@ -9261,7 +9371,7 @@ namespace nemesis {
                     scope_->remove(vardecl.get());
                     scope_->value(name, vardecl.get());
                     // add artificial var declaration to current scope
-                    pending_insertions.emplace_back(scope_, vardecl, clone.get());
+                    pending_insertions.emplace_back(scope_, vardecl, clone.get(), true);
                 }
             }
 
@@ -9269,6 +9379,14 @@ namespace nemesis {
         }
 
         decl.annotation().resolved = true;
+
+        // for array binding
+        if (decl.annotation().type->category() == ast::type::category::array_type && decl.value() && (decl.value()->kind() == ast::kind::array_expression || decl.value()->kind() == ast::kind::array_sized_expression)) {
+            // remove temporary from stack allocation
+            pending_insertions.remove_if([&] (const decltype(pending_insertions)::value_type& t) { return decl.value()->annotation().referencing == std::get<1>(t).get(); });
+            // remove reference
+            decl.value()->annotation().referencing = nullptr;
+        }
     }
 
     void checker::visit(const ast::const_declaration& decl)
@@ -9443,7 +9561,7 @@ namespace nemesis {
         // this is done for smart pointers management
         workspace()->saved.push_back(clone);
         // add artificial var declaration to current scope
-        pending_insertions.emplace_back(scope_, clone, &decl);
+        pending_insertions.emplace_back(scope_, clone, &decl, true);
 
         scope_->value(structured_name, clone.get());
 
@@ -9509,7 +9627,7 @@ namespace nemesis {
                     scope_->remove(constdecl.get());
                     scope_->value(name, constdecl.get());
 
-                    pending_insertions.emplace_back(scope_, constdecl, clone.get());
+                    pending_insertions.emplace_back(scope_, constdecl, clone.get(), true);
                 }
             }
 
@@ -10948,6 +11066,10 @@ namespace nemesis {
                 
                 publisher().publish(diag);
             }
+            else if (t->annotation().type->category() == ast::type::category::behaviour_type) {
+                decl.invalid(true);
+                report(t->range(), diagnostic::format("You can't use behaviour `$` as variant type because it cannot be instantiated, c*nt!", t->annotation().type->string()));
+            }
             else {
                 map.emplace_back(t->annotation().type, t->range());
                 types.push_back(t->annotation().type);
@@ -11452,7 +11574,9 @@ namespace nemesis {
         // iv) tests 
         else {
             auto saved = scope_;
-            for (ast::pointer<ast::node> stmt : decl.statements()) {
+            for (ast::pointer<ast::statement> stmt : decl.statements()) {
+                // current statement
+                statement_ = stmt.get();
                 if (std::dynamic_pointer_cast<ast::test_declaration>(stmt) || 
                     std::dynamic_pointer_cast<ast::function_declaration>(stmt) ||
                     std::dynamic_pointer_cast<ast::var_declaration>(stmt) ||
@@ -11460,11 +11584,13 @@ namespace nemesis {
                     if (!stmt->invalid() && !std::static_pointer_cast<ast::declaration>(stmt)->annotation().resolved) stmt->accept(*this); 
                 }
                 catch (semantic_error& err) { scope_ = saved; }
+                // reset current statement
+                statement_ = nullptr;
             }
 
             // adds all pending and artificial insertion inside the ast because before it would have invalidate the tree (std::vector<ast::statement>)
             while (!pending_insertions.empty()) {
-                add_to_scope(std::get<0>(pending_insertions.front()), std::get<1>(pending_insertions.front()), std::get<2>(pending_insertions.front()));
+                add_to_scope(std::get<0>(pending_insertions.front()), std::get<1>(pending_insertions.front()), std::get<2>(pending_insertions.front()), std::get<3>(pending_insertions.front()));
                 pending_insertions.pop_front();
             }
         }

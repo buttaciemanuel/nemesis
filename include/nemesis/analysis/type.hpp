@@ -337,13 +337,7 @@ namespace nemesis {
             pointer_type(pointer<type> base) : type(), base_(base) {}
             ~pointer_type() {}
             pointer<type> base() const { return base_; }
-            std::string string(bool absolute = true) const 
-            {
-                if (base_->category() == ast::type::category::variant_type) {
-                    return "*{ " + base_->string() + " }";
-                }
-                return "*" + base_->string(); 
-            }
+            std::string string(bool absolute = true) const;
             enum category category() const { return category::pointer_type; }
             ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
             {

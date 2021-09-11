@@ -73,7 +73,7 @@ namespace nemesis {
         source_file& source() const { return *file_; }
         diagnostic_publisher& publisher() const { return compilation_.get_diagnostic_publisher(); }
         environment& scope() const { return *scope_; }
-        std::unordered_map<const ast::node*, environment*> scopes() const { return scopes_; }
+        std::unordered_map<const ast::node*, environment*>& scopes() { return scopes_; }
         environment* get_scope_by_context(const ast::node* root) const { return scopes_.at(root); }
         ast::workspace* workspace() const;
         const ast::function_declaration* entry_point() const { return entry_point_; }
@@ -99,7 +99,7 @@ namespace nemesis {
     private:
         environment* begin_scope(const ast::node* enclosing);
         void end_scope();
-        void add_to_scope(environment* scope, ast::pointer<ast::declaration> decl, const ast::statement* after = nullptr) const;
+        void add_to_scope(environment* scope, ast::pointer<ast::declaration> decl, const ast::statement* after = nullptr, bool is_after = true) const;
         std::unordered_map<std::string, const ast::declaration*> similars(const std::string& name, const environment* scope) const;
         void do_imports();
         void import_core_library_in_workspaces();
@@ -203,6 +203,10 @@ namespace nemesis {
          */
         source_file* file_;
         /**
+         * Current statement
+         */
+        const ast::statement* statement_ = nullptr;
+        /**
          * Entry point of execution
          */
         const ast::function_declaration* entry_point_ = nullptr;
@@ -216,9 +220,10 @@ namespace nemesis {
         std::unordered_map<const ast::node*, environment*> scopes_;
         /**
          * Queue of declarations to be added to scope, this is performed later
-         * as it would invalidate vector of statement because of insertion
+         * as it would invalidate vector of statements because of insertion
+         * Boolean value stands for after (true) or before (false) the passed statement
          */
-        std::list<std::tuple<environment*, ast::pointer<ast::declaration>, const ast::statement*>> pending_insertions;
+        std::list<std::tuple<environment*, ast::pointer<ast::declaration>, const ast::statement*, bool>> pending_insertions;
         /**
          * Checker pass on an abstract syntax file
          * Zero pass registers workspace in root

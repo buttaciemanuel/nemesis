@@ -10,8 +10,6 @@ namespace nemesis {
         ~code_generator();
         // compiles source files and generates cpp target source files
         std::list<compilation::target> generate();
-        void set_entry_point(const ast::function_declaration* decl);
-        const ast::function_declaration* entry_point() const;
         void trace(bool flag);
         bool trace() const;
         std::string emit(ast::pointer<ast::type> type) const;

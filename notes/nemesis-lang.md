@@ -1512,12 +1512,12 @@ block-expr : <b>{</b> stmt* <b>}</b>
 
 condition-expr : logic-or-expr
 
-if-expr : <b>if</b> condition-expr block-expr ( <b>else</b> ( if-expr | block-expr ) )?
+if-expr : <b>if</b> condition-expr block-expr ( <b>else</b> ( if-expr | when-expr | block-expr ) )?
 
 for-expr : ( <b>for</b> identifier ( <b>:</b> type ) <b>in</b> condition-expr )
-           contract-clause? block-expr ( <b>else</b> block-expr )?
+           contract-clause? block-expr ( <b>else</b> ( if-expr | when-expr | block-expr ) )?
 
-when-expr : <b>when</b> condition-expr <b>{</b> when-branch* <b>}</b> ( <b>else</b> block-expr )?
+when-expr : <b>when</b> condition-expr <b>{</b> when-branch* <b>}</b> ( <b>else</b> ( if-expr | when-expr | block-expr ) )?
           | <b>when</b> condition-expr <b>is</b> type block-expr
           | <b>when</b> condition-expr <b>=</b> pattern-primary-expr block-expr
 

@@ -163,7 +163,9 @@ namespace nemesis {
                 if (!target.header) command.append(" ").append(target.name);
             }
             // link in compilation all cpp source files from `cpp` directories of each package
-            for (auto package : packages()) for (auto cpp : package.second.cpp_sources) command.append(" ").append(cpp->name().string());
+            for (auto package : packages()) for (auto cpp : package.second.cpp_sources) {
+                if (!cpp->has_type(source_file::filetype::header)) command.append(" ").append(cpp->name().string());
+            }
 
             std::cout << "-- " << command << " --\n";
 
