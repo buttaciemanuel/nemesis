@@ -568,6 +568,8 @@ namespace nemesis {
             
             {
                 struct guard inner(output_);
+                // hash of the dynamic type holding this vtable
+                output_.line() << "std::size_t __dyntype;\n";
                 // offset size to determine at which distance (in bytes) the base object (of behavioural type) begins
                 output_.line() << "std::size_t __offset;\n";
             }
@@ -617,6 +619,22 @@ namespace nemesis {
                 }
                 output_.stream() << "); }\n";
             }
+        }
+        // dynamic cast function
+        {
+            struct guard inner(output_);
+            // behaviour name
+            auto bname = fullname(&decl);
+            // now emits generic downcast function which will check the dynamic type
+            output_.line() << "template<typename DynType> DynType* __dyncast_" << bname << "(" << bname << "* base, std::size_t dyntype, const char* file, unsigned line, unsigned col) {\n";
+            {
+                struct guard inner(output_);
+                // if dynamic type does not match, then error
+                output_.line() << "if (dyntype != base->__vptr_" << bname << "->__dyntype) __crash(\"downcast failed because cast type does not match real type of " << bname << ", c*nt.\", file, line, col);\n";
+                // return downcasted type
+                output_.line() << "return (DynType*) ((char*) base - base->__vptr_" << bname << "->__offset);\n";
+            }
+            output_.line() << "}\n";
         }
     }
     
@@ -670,6 +688,8 @@ namespace nemesis {
             for (auto behaviour : types::implementors().at(decl.annotation().type)) {
                 auto bname = fullname(behaviour->declaration());
                 output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
+                // set dynamic type of this vptr inside structure
+                output_.stream() << std::hash<std::string>()(decl.annotation().type->string()) << "ull, ";
                 // set offset of this vptr inside structure
                 output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
                 // fill vtable with function pointers
@@ -806,6 +826,8 @@ namespace nemesis {
             for (auto behaviour : types::implementors().at(decl.annotation().type)) {
                 auto bname = fullname(behaviour->declaration());
                 output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
+                // set dynamic type of this vptr inside structure
+                output_.stream() << std::hash<std::string>()(decl.annotation().type->string()) << "ull, ";
                 // set offset of this vptr inside structure
                 output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
                 // fill vtable with function pointers
@@ -1122,6 +1144,28 @@ namespace nemesis {
         output_.stream() << ")";
     }
 
+    void code_generator::visit(const ast::postfix_expression& expr)
+    {
+        if (emit_if_constant(expr)) return;
+
+        output_.stream() << "(";
+
+        expr.expression()->accept(*this);
+        
+        switch (expr.postfix().kind()) {
+            case token::kind::plus_plus:
+                output_.stream() << "++";
+                break;
+            case token::kind::minus_minus:
+                output_.stream() << "--";
+                break;
+            default:
+                break;
+        }
+
+        output_.stream() << ")";
+    }
+    
     void code_generator::visit(const ast::binary_expression& expr) 
     {
         if (emit_if_constant(expr)) return;
@@ -1180,7 +1224,7 @@ namespace nemesis {
                     expr.left()->accept(*this);
                     output_.stream() << ", \"" << expr.binary_operator().location().filename << "\", " << expr.binary_operator().location().line << ", " << expr.binary_operator().location().column << ")";
                 }
-                // implicit upcasting
+                // explicit upcasting
                 else if (result->category() == ast::type::category::pointer_type && std::static_pointer_cast<ast::pointer_type>(result)->base()->category() == ast::type::category::behaviour_type && original->category() == ast::type::category::pointer_type) {
                     auto implementor = std::static_pointer_cast<ast::pointer_type>(original)->base();
                     auto behaviour = std::static_pointer_cast<ast::behaviour_type>(std::static_pointer_cast<ast::pointer_type>(result)->base());
@@ -1190,14 +1234,14 @@ namespace nemesis {
                         output_.stream() << " + offsetof(" << emit(implementor) << ", __vptr_" << emit(behaviour) << "))";
                     }
                 }
-                // implicit downcast
+                // explicit downcast
                 else if (original->category() == ast::type::category::pointer_type && std::static_pointer_cast<ast::pointer_type>(original)->base()->category() == ast::type::category::behaviour_type && result->category() == ast::type::category::pointer_type) {
                     auto implementor = std::static_pointer_cast<ast::pointer_type>(result)->base();
                     auto behaviour = std::static_pointer_cast<ast::behaviour_type>(std::static_pointer_cast<ast::pointer_type>(original)->base());
                     if (behaviour->implementor(implementor)) {
-                        output_.stream() << "(" << emit(result) << ") ((char*) ";
+                        output_.stream() << "__dyncast_" << emit(behaviour) << "<" << emit(implementor) << ">(";
                         expr.left()->accept(*this);
-                        output_.stream() << " - offsetof(" << emit(implementor) << ", __vptr_" << emit(behaviour) << "))";
+                        output_.stream() << ", " << std::hash<std::string>()(implementor->string()) << "ull, \"" << expr.binary_operator().location().filename << "\", " << expr.binary_operator().location().line << ", " << expr.binary_operator().location().column << ")";
                     }
                 }
                 else switch (result->category()) {
@@ -1226,6 +1270,14 @@ namespace nemesis {
                         if (original->category() == ast::type::category::slice_type) {
                             expr.left()->accept(*this);
                             output_.stream() << ".data()";
+                        }
+                        break;
+                    case ast::type::category::slice_type:
+                        // conversion from array to slice
+                        if (original->category() == ast::type::category::array_type) {
+                            output_.stream() << "__slice<" << emit(std::static_pointer_cast<ast::slice_type>(result)->base()) << ">(";
+                            expr.left()->accept(*this);
+                            output_.stream() << ", " << std::static_pointer_cast<ast::array_type>(original)->size() << "ull)";
                         }
                         break;
                     default:
@@ -1486,10 +1538,25 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
-        expr.expression()->accept(*this);
-        output_.stream() << "[";
-        expr.index()->accept(*this);
-        output_.stream() << "]";
+        switch (expr.expression()->annotation().type->category()) {
+            case ast::type::category::array_type:
+            {
+                // array type uses specific function for checked access
+                auto array_type = std::static_pointer_cast<ast::array_type>(expr.expression()->annotation().type);
+                output_.stream() << "__array_at<" << array_type->size() << "ull>(";
+                expr.expression()->accept(*this);
+                output_.stream() << ", ";
+                expr.index()->accept(*this);
+                output_.stream() << ")";
+                break;
+            }
+            default:
+                // __slice overloads checked operator[]
+                expr.expression()->accept(*this);
+                output_.stream() << "[";
+                expr.index()->accept(*this);
+                output_.stream() << "]";
+        }
     }
 
     void code_generator::visit(const ast::tuple_index_expression& expr)
@@ -1572,9 +1639,9 @@ namespace nemesis {
             auto implementor = std::static_pointer_cast<ast::pointer_type>(result)->base();
             auto behaviour = std::static_pointer_cast<ast::behaviour_type>(std::static_pointer_cast<ast::pointer_type>(original)->base());
             if (behaviour->implementor(implementor)) {
-                output_.stream() << "(" << emit(result) << ") ((char*) ";
-                expr.expression()->accept(*this);
-                output_.stream() << " - offsetof(" << emit(implementor) << ", __vptr_" << emit(behaviour) << "))";
+               output_.stream() << "__dyncast_" << emit(behaviour) << "<" << emit(implementor) << ">(";
+               expr.expression()->accept(*this);
+               output_.stream() << ", " << std::hash<std::string>()(implementor->string()) << "ull, \"" << expr.range().filename << "\", " << expr.range().bline << ", " << expr.range().bcolumn << ")";
             }
         }
         else switch (result->category()) {
@@ -1703,6 +1770,81 @@ namespace nemesis {
                 expr.else_body()->accept(*this);
                 output_.line() << "}\n";
             }
+        }
+    }
+
+    void code_generator::visit(const ast::for_range_expression& expr)
+    {
+        if (emit_if_constant(expr)) return;
+        
+        switch (expr.condition()->annotation().type->category()) {
+        case ast::type::category::range_type:
+            throw std::invalid_argument("range type not yet implemented in core.cpp");
+        case ast::type::category::array_type:
+        {
+            auto temp = "__i" + std::to_string(std::rand());
+            output_.line() << "std::size_t " << temp << " = 0;\n";
+            output_.line() << "for (; " << temp << " < " << std::static_pointer_cast<ast::array_type>(expr.condition()->annotation().type)->size() << "ull; ++" << temp << ") {\n";
+            {
+                struct guard inner(output_);
+                expr.variable()->accept(*this);
+                output_.stream() << " = ";
+                expr.condition()->accept(*this);
+                output_.stream() << "[" << temp << "];\n";
+            }
+            expr.body()->accept(*this);
+            output_.line() << "}\n";
+            if (expr.else_body()) {
+                output_.line() << "if (" << temp << " >= " << std::static_pointer_cast<ast::array_type>(expr.condition()->annotation().type)->size() << "ull) {\n";
+                expr.else_body()->accept(*this);
+                output_.line() << "}\n";
+            }
+            break;
+        }
+        case ast::type::category::slice_type:
+        {
+            auto temp = "__i" + std::to_string(std::rand());
+            output_.line() << "std::size_t " << temp << " = 0;\n";
+            output_.line() << "for (; " << temp << " < __get_size(";
+            expr.condition()->accept(*this);
+            output_.stream() << "); ++" << temp << ") {\n";
+            {
+                struct guard inner(output_);
+                expr.variable()->accept(*this);
+                output_.stream() << " = ";
+                expr.condition()->accept(*this);
+                output_.stream() << "[" << temp << "];\n";
+            }
+            expr.body()->accept(*this);
+            output_.line() << "}\n";
+            if (expr.else_body()) {
+                output_.line() << "if (" << temp << " >= __get_size(";
+                expr.condition()->accept(*this);
+                output_.stream() << ")) {\n";
+                expr.else_body()->accept(*this);
+                output_.line() << "}\n";
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    void code_generator::visit(const ast::for_loop_expression& expr)
+    {
+        if (emit_if_constant(expr)) return;
+
+        output_.stream() << "while (";
+        expr.condition()->accept(*this);
+        output_.stream() << ") {\n";
+        expr.body()->accept(*this);
+        output_.line() << "}\n";
+        if (expr.else_body()) {
+            throw std::invalid_argument("else in for_loop not yet implemented");
+            output_.line() << "if (false) {\n";
+            expr.else_body()->accept(*this);
+            output_.line() << "}\n";
         }
     }
 

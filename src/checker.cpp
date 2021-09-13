@@ -1423,22 +1423,22 @@ namespace nemesis {
 
         for (const environment* into = scope; into; into = into->parent()) {
             for (auto pair : into->types()) {
-                if (utils::levenshtein_distance(name, pair.first) < 3) {
+                if (utils::levenshtein_distance(name, pair.first) < 2) {
                     result.emplace(fullname(pair.second), pair.second);
                 }
             }
             for (auto pair : into->concepts()) {
-                if (utils::levenshtein_distance(name, pair.first) < 3) {
+                if (utils::levenshtein_distance(name, pair.first) < 2) {
                     result.emplace(fullname(pair.second), pair.second);
                 }
             }
             for (auto pair : into->functions()) {
-                if (utils::levenshtein_distance(name, pair.first) < 3) {
+                if (utils::levenshtein_distance(name, pair.first) < 2) {
                     result.emplace(fullname(pair.second), pair.second);
                 }
             }
             for (auto pair : into->values()) {
-                if (utils::levenshtein_distance(name, pair.first) < 3) {
+                if (utils::levenshtein_distance(name, pair.first) < 2) {
                     result.emplace(fullname(pair.second), pair.second);
                 }
             }
@@ -3330,17 +3330,17 @@ namespace nemesis {
                     expr.elements().at(i) = implicit;
                 }
             }
+            // temporary array must be instantiated and bound to an array object, otherwise it won't be allocated on stack
+            auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, expr.clone());
+            binding->annotation().type = expr.annotation().type;
+            binding->annotation().scope = scope_->enclosing();
+            // later insertion before use
+            pending_insertions.emplace_back(scope_, binding, statement_, false);
+            // referencing
+            expr.annotation().referencing = binding.get();
         }
 
         expr.annotation().type = types::array(base, expr.elements().size());
-        // temporary array must be instantiated and bound to an array object, otherwise it won't be allocated on stack
-        auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, expr.clone());
-        binding->annotation().type = expr.annotation().type;
-        binding->annotation().scope = scope_->enclosing();
-        // later insertion before use
-        pending_insertions.emplace_back(scope_, binding, statement_, false);
-        // referencing
-        expr.annotation().referencing = binding.get();
     }
 
     void checker::visit(const ast::array_sized_expression& expr) 
@@ -4399,10 +4399,10 @@ namespace nemesis {
                                 for (auto generic_parameter : generic->parameters()) {
                                     token name = generic_parameter->kind() == ast::kind::generic_const_parameter_declaration ? std::static_pointer_cast<ast::generic_const_parameter_declaration>(generic_parameter)->name() : std::static_pointer_cast<ast::generic_type_parameter_declaration>(generic_parameter)->name();
                                     auto found = match.bindings.find(name.lexeme().string());
-                                    if (found == match.bindings.end()) {
+                                    if (found == match.bindings.end() || (generic_parameter->kind() == ast::kind::generic_type_parameter_declaration && found->second.type->category() == ast::type::category::unknown_type)) {
                                         std::ostringstream oss;
 
-                                        oss << fdecl->name().lexeme() << "!(/*" << name.lexeme() << "*/)";
+                                        oss << fdecl->name().lexeme() << "!(" << name.lexeme() << ")";
 
                                         auto builder = diagnostic::builder()
                                                     .location(expr.range().begin())
@@ -4758,10 +4758,10 @@ namespace nemesis {
                                 for (auto generic_parameter : generic->parameters()) {
                                     token name = generic_parameter->kind() == ast::kind::generic_const_parameter_declaration ? std::static_pointer_cast<ast::generic_const_parameter_declaration>(generic_parameter)->name() : std::static_pointer_cast<ast::generic_type_parameter_declaration>(generic_parameter)->name();
                                     auto found = match.bindings.find(name.lexeme().string());
-                                    if (found == match.bindings.end()) {
+                                    if (found == match.bindings.end() || (generic_parameter->kind() == ast::kind::generic_type_parameter_declaration && found->second.type->category() == ast::type::category::unknown_type)) {
                                         std::ostringstream oss;
 
-                                        oss << fdecl->name().lexeme() << "!(/*" << name.lexeme() << "*/)";
+                                        oss << fdecl->name().lexeme() << "!(" << name.lexeme() << ")";
 
                                         auto builder = diagnostic::builder()
                                                     .location(expr.range().begin())
@@ -5265,10 +5265,10 @@ namespace nemesis {
                             for (auto generic_parameter : generic->parameters()) {
                                 token name = generic_parameter->kind() == ast::kind::generic_const_parameter_declaration ? std::static_pointer_cast<ast::generic_const_parameter_declaration>(generic_parameter)->name() : std::static_pointer_cast<ast::generic_type_parameter_declaration>(generic_parameter)->name();
                                 auto found = match.bindings.find(name.lexeme().string());
-                                if (found == match.bindings.end()) {
+                                if (found == match.bindings.end() || (generic_parameter->kind() == ast::kind::generic_type_parameter_declaration && found->second.type->category() == ast::type::category::unknown_type)) {
                                     std::ostringstream oss;
 
-                                    oss << fdecl->name().lexeme() << "!(/*" << name.lexeme() << "*/)";
+                                    oss << fdecl->name().lexeme() << "!(" << name.lexeme() << ")";
 
                                     auto builder = diagnostic::builder()
                                                 .location(expr.range().begin())
@@ -7063,7 +7063,8 @@ namespace nemesis {
                         if (!behaviour->implementor(lpointee)) {
                             expr.invalid(true);
                             expr.annotation().type = types::unknown();
-                            error(expr, diagnostic::format("You cannot convert type `$` to `$`, c*nt! \\ Type `$` must implements behaviour `$` to allow upcast!", lefttype->string(), righttype->string(), lpointee->string(), behaviour->string()));
+                            if (lpointee->category() != ast::type::category::behaviour_type) error(expr, diagnostic::format("You cannot convert type `$` to `$`, c*nt! \\ Type `$` must implements behaviour `$` to allow upcast!", lefttype->string(), righttype->string(), lpointee->string(), behaviour->string()));
+                            else error(expr, diagnostic::format("You cannot convert type `$` to `$`, c*nt!", lefttype->string(), righttype->string(), lpointee->string(), behaviour->string()));
                         }
                         else expr.annotation().type = righttype;
                     }
@@ -7078,6 +7079,16 @@ namespace nemesis {
                             warning(expr, diagnostic::format("Explicit conversion from `$` to `$` (alias downcast) may crash at run-time!", lefttype->string(), righttype->string()));
                             expr.annotation().type = righttype;
                         }
+                    }
+                }
+                else if (lefttype->category() == ast::type::category::array_type && righttype->category() == ast::type::category::slice_type) {
+                    if (types::compatible(std::static_pointer_cast<ast::array_type>(lefttype)->base(), std::static_pointer_cast<ast::slice_type>(righttype)->base())) {
+                        expr.annotation().type = righttype;
+                    }
+                    else {
+                        expr.invalid(true);
+                        expr.annotation().type = types::unknown();
+                        error(expr, diagnostic::format("You cannot convert type `$` to `$`, c*nt!", lefttype->string(), righttype->string()));
                     }
                 }
                 else if (types::assignment_compatible(lefttype, righttype)) {

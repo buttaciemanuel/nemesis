@@ -64,6 +64,7 @@ namespace nemesis {
         
         void visit(const ast::implicit_conversion_expression& expr);
         void visit(const ast::literal_expression& expr);
+        void visit(const ast::postfix_expression& expr);
         void visit(const ast::unary_expression& expr);
         void visit(const ast::binary_expression& expr);
         void visit(const ast::identifier_expression& expr);
@@ -81,6 +82,8 @@ namespace nemesis {
         void visit(const ast::when_cast_expression& expr);
         void visit(const ast::when_pattern_expression& expr);
         void visit(const ast::when_expression& expr);
+        void visit(const ast::for_loop_expression& expr);
+        void visit(const ast::for_range_expression& expr);
 
         void visit(const ast::expression_statement& stmt);
         void visit(const ast::assignment_statement& stmt);

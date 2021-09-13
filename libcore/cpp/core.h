@@ -273,6 +273,14 @@ template<typename T> inline void __free(T* memory) { delete[] memory; }
 
 template<typename T> constexpr std::size_t __get_size(__slice<T> slice) { return slice.size(); }
 
+template<std::size_t N, typename T> constexpr T& __array_at(T* array, std::size_t index) 
+{
+#if __DEVELOPMENT__
+    if (index >= N) __crash(__format("array index out of bounds, ? when size is ?", index, N));
+#endif 
+    return array[index]; 
+}
+
 constexpr std::size_t __get_size(__chars arg) { return arg.size(); }
 
 constexpr std::size_t __get_length(__chars arg) { return arg.length(); }

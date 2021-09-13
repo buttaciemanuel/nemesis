@@ -537,7 +537,6 @@ namespace nemesis {
 
         if (current().is(token::kind::identifier)) {
             return path_type_expression();
-            //return identifier_type_expression();
         }
         else if (current().is(token::kind::function_kw)) {
             return function_type_expression();
@@ -661,7 +660,8 @@ namespace nemesis {
             ast::pointers<ast::expression> generics;
             bool generic = false;
 
-            if (istype) {
+            if (name.eol);
+            else if (istype) {
                 generic = generic_arguments_list(generics);
             }
             else if (match(token::kind::bang) && !(generic = generic_arguments_list(generics))) {

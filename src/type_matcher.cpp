@@ -77,7 +77,7 @@ namespace nemesis {
                 {
                     auto key = static_cast<const ast::type_declaration*>(pattern.type->declaration())->name().lexeme().string();
                     auto found = result.bindings.find(key);
-                    if (found != result.bindings.end() && !nemesis::types::compatible(found->second.type, expression.type)) {
+                    if (found != result.bindings.end() && expression.type->category() != ast::type::category::unknown_type && !nemesis::types::compatible(found->second.type, expression.type)) {
                         result.duplication = true;
                         error(pattern.type->declaration()->range(), diagnostic::format("Parameter `$` has already been bound to type `$`. You cannot rebind it to `$`, idiot!", key, found->second.type->string(), expression.type->string()), "", diagnostic::format("duplicating $", key));
                     }
