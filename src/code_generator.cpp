@@ -1835,14 +1835,15 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
-        output_.stream() << "while (";
+        auto temp = "__c" + std::to_string(std::rand());
+        output_.line() << "bool " << temp << " = true;\n";
+        output_.line() << "while ((" << temp << " = ";
         expr.condition()->accept(*this);
-        output_.stream() << ") {\n";
+        output_.stream() << ")) {\n";
         expr.body()->accept(*this);
         output_.line() << "}\n";
         if (expr.else_body()) {
-            throw std::invalid_argument("else in for_loop not yet implemented");
-            output_.line() << "if (false) {\n";
+            output_.line() << "if (!" << temp << ") {\n";
             expr.else_body()->accept(*this);
             output_.line() << "}\n";
         }
