@@ -272,28 +272,32 @@ namespace nemesis {
 
     void checker::add_to_scope(environment* scope, ast::pointer<ast::declaration> decl, const ast::statement* after, bool is_after) const
     {
-        switch (scope->enclosing()->kind()) {
-            case ast::kind::source_unit_declaration:
-            case ast::kind::workspace:
-            {
-                workspace()->globals.push_back(decl.get());
-                auto source_unit = std::static_pointer_cast<ast::source_unit_declaration>(file_->ast());
-                auto pos = std::find_if(source_unit->statements().begin(), source_unit->statements().end(), [&] (ast::pointer<ast::statement> stmt) { return stmt.get() == after; });
-                if (is_after) source_unit->statements().insert(++pos, decl);
-                else source_unit->statements().insert(pos, decl);
-                break;
+        while (scope) {
+            switch (scope->enclosing()->kind()) {
+                case ast::kind::source_unit_declaration:
+                case ast::kind::workspace:
+                {
+                    workspace()->globals.push_back(decl.get());
+                    auto source_unit = std::static_pointer_cast<ast::source_unit_declaration>(file_->ast());
+                    auto pos = std::find_if(source_unit->statements().begin(), source_unit->statements().end(), [&] (ast::pointer<ast::statement> stmt) { return stmt.get() == after; });
+                    if (is_after) source_unit->statements().insert(++pos, decl);
+                    else source_unit->statements().insert(pos, decl);
+                    return;
+                }
+                case ast::kind::block_expression:
+                {
+                    auto block = static_cast<const ast::block_expression*>(scope->enclosing());
+                    auto pos = std::find_if(block->statements().begin(), block->statements().end(), [&] (ast::pointer<ast::statement> stmt) { return stmt.get() == after; });
+                    if (is_after) block->statements().insert(++pos, decl);
+                    else block->statements().insert(pos, decl);
+                    return;
+                }
+                default:
+                    scope = scope->parent();
             }
-            case ast::kind::block_expression:
-            {
-                auto block = static_cast<const ast::block_expression*>(scope->enclosing());
-                auto pos = std::find_if(block->statements().begin(), block->statements().end(), [&] (ast::pointer<ast::statement> stmt) { return stmt.get() == after; });
-                if (is_after) block->statements().insert(++pos, decl);
-                else block->statements().insert(pos, decl);
-                break;
-            }
-            default:
-                throw std::invalid_argument("checker::add_to_scope(): invalid type of scope for adding declaration");
         }
+
+        throw std::invalid_argument("checker::add_to_scope(): invalid type of scope for adding declaration");
     }
 
     ast::workspace* checker::workspace() const
@@ -910,6 +914,13 @@ namespace nemesis {
         if (std::count_if(workspace->types.begin(), workspace->types.end(), [&] (ast::pointer<ast::type> x) { return types::compatible(x, type); }) == 0) {
             workspace->types.push_back(type);
         }
+    }
+
+    ast::pointer<ast::var_declaration> checker::create_temporary_var(const ast::expression& value) const
+    {
+        auto binding = ast::create<ast::var_declaration>(value.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, value.clone());
+        binding->annotation().type = value.annotation().type;
+        return binding;
     }
 
     void checker::mismatch(source_range x, source_range y, const std::string& message, const std::string& explanation, const std::string& inlined)
@@ -3330,17 +3341,19 @@ namespace nemesis {
                     expr.elements().at(i) = implicit;
                 }
             }
+        }
+
+        expr.annotation().type = types::array(base, expr.elements().size());
+
+        if (!expr.elements().empty() && !dynamic_cast<const ast::contract_statement*>(statement_)) {
             // temporary array must be instantiated and bound to an array object, otherwise it won't be allocated on stack
-            auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, expr.clone());
-            binding->annotation().type = expr.annotation().type;
+            auto binding = create_temporary_var(expr);
             binding->annotation().scope = scope_->enclosing();
             // later insertion before use
             pending_insertions.emplace_back(scope_, binding, statement_, false);
             // referencing
             expr.annotation().referencing = binding.get();
         }
-
-        expr.annotation().type = types::array(base, expr.elements().size());
     }
 
     void checker::visit(const ast::array_sized_expression& expr) 
@@ -3378,9 +3391,10 @@ namespace nemesis {
             }
         }
 
+        if (dynamic_cast<const ast::contract_statement*>(statement_)) return;
+
         // temporary array must be instantiated and bound to an array object, otherwise it won't be allocated on stack
-        auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, expr.clone());
-        binding->annotation().type = expr.annotation().type;
+        auto binding = create_temporary_var(expr);
         binding->annotation().scope = scope_->enclosing();
         // later insertion before use
         pending_insertions.emplace_back(scope_, binding, statement_, false);
@@ -3804,7 +3818,10 @@ namespace nemesis {
         for (auto var : vars_to_remove) scope_->values().erase(var);
         // contracts at the beginning
         for (auto contract : contracts) {
-            if (std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
+            auto prev = statement_;
+            statement_ = contract.get();
+            if (std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) try { contract->accept(*this); } catch (abort_error&) { throw; } catch (...) { statement_ = prev; throw; }
+            statement_ = prev;
         }
         // fourth pass is used to check all others statements including
         // functions
@@ -3819,6 +3836,8 @@ namespace nemesis {
             if (auto decl = std::dynamic_pointer_cast<ast::declaration>(stmt)) {
                 if (decl->annotation().resolved) continue;
             }
+            
+            auto prev = statement_;
             // current statement
             statement_ = stmt.get();
             // other statement to check
@@ -3842,11 +3861,14 @@ namespace nemesis {
                 scope_ = saved;
             }
             // set current statement
-            statement_ = nullptr;
+            statement_ = prev;
         }
         // contracts at exit
         for (auto contract : contracts) {
-            if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
+            auto prev = statement_;
+            statement_ = contract.get();
+            if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) try { contract->accept(*this); } catch (abort_error&) { throw; } catch (...) { statement_ = prev; throw; }
+            statement_ = prev;
         }
 
         end_scope();
@@ -4520,11 +4542,17 @@ namespace nemesis {
                             }
                             
                             auto array = ast::create<ast::array_expression>(source_range(expr.arguments().at(i)->range().begin(), expr.arguments().back()->range().end()), elements);
-                            array->annotation().type = types::slice(variadic);
+                            array->annotation().type = types::array(variadic, expr.arguments().size() - i);
+
+                            auto binding = create_temporary_var(*array);
+                            binding->annotation().scope = scope_->enclosing();
+                            pending_insertions.emplace_back(scope_, binding, statement_, false);
+
+                            array->annotation().referencing = binding.get();
                             
                             for (std::size_t j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
 
-                            expr.arguments().back() = array;
+                            expr.arguments().back() = implicit_forced_cast(types::slice(variadic), array);
                         }
                         else {
                             expr.arguments().at(i)->accept(*this);
@@ -4883,11 +4911,17 @@ namespace nemesis {
                             }
                             
                             auto array = ast::create<ast::array_expression>(source_range(expr.arguments().at(i)->range().begin(), expr.arguments().back()->range().end()), elements);
-                            array->annotation().type = types::slice(variadic);
+                            array->annotation().type = types::array(variadic, expr.arguments().size() - i);
+
+                            auto binding = create_temporary_var(*array);
+                            binding->annotation().scope = scope_->enclosing();
+                            pending_insertions.emplace_back(scope_, binding, statement_, false);
+
+                            array->annotation().referencing = binding.get();
                             
                             for (std::size_t j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
 
-                            expr.arguments().back() = array;
+                            expr.arguments().back() = implicit_forced_cast(types::slice(variadic), array);
                         }
                         else {
                             expr.arguments().at(i)->accept(*this);
@@ -5416,11 +5450,17 @@ namespace nemesis {
                         }
                         
                         auto array = ast::create<ast::array_expression>(source_range(expr.arguments().at(i)->range().begin(), expr.arguments().back()->range().end()), elements);
-                        array->annotation().type = types::slice(variadic);
+                        array->annotation().type = types::array(variadic, expr.arguments().size() - i);
+
+                        auto binding = create_temporary_var(*array);
+                        binding->annotation().scope = scope_->enclosing();
+                        pending_insertions.emplace_back(scope_, binding, statement_, false);
+
+                        array->annotation().referencing = binding.get();
                         
                         for (std::size_t j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
 
-                        expr.arguments().back() = array;
+                        expr.arguments().back() = implicit_forced_cast(types::slice(variadic), array);
                     }
                     else {
                         expr.arguments().at(i)->accept(*this);
@@ -5433,7 +5473,6 @@ namespace nemesis {
                                 expr.arguments().at(i)->annotation().type = fntype->formals().at(i);
                             }
 
-                            //if (identifier->annotation().referencing) test_immutable_assignment(*std::dynamic_pointer_cast<ast::parameter_declaration>(params.at(i)), *expr.arguments().at(i));
                             if (identifier->annotation().referencing) test_immutable_assignment(fntype->formals().at(i), *expr.arguments().at(i));
                         }
                         else {
@@ -11587,6 +11626,7 @@ namespace nemesis {
             auto saved = scope_;
             for (ast::pointer<ast::statement> stmt : decl.statements()) {
                 // current statement
+                auto prev = statement_;
                 statement_ = stmt.get();
                 if (std::dynamic_pointer_cast<ast::test_declaration>(stmt) || 
                     std::dynamic_pointer_cast<ast::function_declaration>(stmt) ||
@@ -11596,7 +11636,7 @@ namespace nemesis {
                 }
                 catch (semantic_error& err) { scope_ = saved; }
                 // reset current statement
-                statement_ = nullptr;
+                statement_ = prev;
             }
 
             // adds all pending and artificial insertion inside the ast because before it would have invalidate the tree (std::vector<ast::statement>)

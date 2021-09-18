@@ -152,6 +152,14 @@ public:
 #endif 
         return data_[index]; 
     }
+    constexpr __slice<T> slice(std::size_t begin, std::size_t end) const
+    {
+#if __DEVELOPMENT__
+        if (begin >= size_) __crash(__format("slice start index out of bounds, ? when size is ?", begin, size_));
+        if (end > size_) __crash(__format("slice end index out of bounds, ? when size is ?", end, size_));
+#endif
+        return __slice<T>(data_ + begin, end - begin); 
+    }
     constexpr __slice_iterator<T> begin() const { return __slice_iterator<T>(data_); }
     constexpr __slice_iterator<T> end() const { return __slice_iterator<T>(data_ + size_); }
 private:
@@ -279,6 +287,22 @@ template<std::size_t N, typename T> constexpr T& __array_at(T* array, std::size_
     if (index >= N) __crash(__format("array index out of bounds, ? when size is ?", index, N));
 #endif 
     return array[index]; 
+}
+
+template<std::size_t N, typename T> constexpr __slice<T> __get_slice(T* array, std::size_t begin, std::size_t end)
+{
+#if __DEVELOPMENT__
+    if (begin >= N) __crash(__format("array start index out of bounds, ? when size is ?", begin, N));
+    if (end > N) __crash(__format("array end index out of bounds, ? when size is ?", end, N));
+#endif
+    return __slice<T>(array + begin, end - begin); 
+}
+
+template<std::size_t N, typename T> bool __array_equals(const T (&x)[N], const T (&y)[N])
+{
+    std::size_t i = 0;
+    for (; i < N && x[i] == y[i]; ++i);
+    return i == N;
 }
 
 constexpr std::size_t __get_size(__chars arg) { return arg.size(); }

@@ -661,6 +661,8 @@ namespace nemesis {
             }
             // then fields
             for (auto field : decl.fields()) field->accept(*this);
+            // default constructor
+            output_.line() << emit(decl.annotation().type) << "() = default;\n";
             // prototype of constructor for fields
             {
                 struct guard inner(output_);
@@ -1288,9 +1290,19 @@ namespace nemesis {
                 break;
             }
             case token::kind::equal_equal:
-                expr.left()->accept(*this);
-                output_.stream() << " == ";
-                expr.right()->accept(*this);
+                if (expr.left()->annotation().type->category() == ast::type::category::array_type && expr.right()->annotation().type->category() == ast::type::category::array_type)
+                {
+                    output_.stream() << "__array_equals<" << std::static_pointer_cast<ast::array_type>(expr.left()->annotation().type)->size() << "ull>(";
+                    expr.left()->accept(*this);
+                    output_.stream() << ", ";
+                    expr.right()->accept(*this);
+                    output_.stream() << ")";
+                }
+                else {
+                    expr.left()->accept(*this);
+                    output_.stream() << " == ";
+                    expr.right()->accept(*this);
+                }
                 break;
             case token::kind::bang_equal:
                 expr.left()->accept(*this);
@@ -1543,19 +1555,48 @@ namespace nemesis {
             {
                 // array type uses specific function for checked access
                 auto array_type = std::static_pointer_cast<ast::array_type>(expr.expression()->annotation().type);
-                output_.stream() << "__array_at<" << array_type->size() << "ull>(";
-                expr.expression()->accept(*this);
-                output_.stream() << ", ";
-                expr.index()->accept(*this);
-                output_.stream() << ")";
+                if (auto range = std::dynamic_pointer_cast<ast::range_expression>(expr.index())) {
+                    output_.stream() << "__get_slice<" << array_type->size() << "ull>(";
+                    expr.expression()->accept(*this);
+                    output_.stream() << ", ";
+                    if (range->start()) range->start()->accept(*this);
+                    else output_.stream() << "0ull";
+                    output_.stream() << ", ";
+                    if (range->end()) range->end()->accept(*this);
+                    else output_.stream() << array_type->size() << "ull";
+                    output_.stream() << ")";
+                }
+                else {
+                    output_.stream() << "__array_at<" << array_type->size() << "ull>(";
+                    expr.expression()->accept(*this);
+                    output_.stream() << ", ";
+                    expr.index()->accept(*this);
+                    output_.stream() << ")";
+                }
                 break;
             }
             default:
-                // __slice overloads checked operator[]
-                expr.expression()->accept(*this);
-                output_.stream() << "[";
-                expr.index()->accept(*this);
-                output_.stream() << "]";
+                // __slice overloads checked operator[] and implements function slice()
+                if (auto range = std::dynamic_pointer_cast<ast::range_expression>(expr.index())) {
+                    expr.expression()->accept(*this);
+                    output_.stream() << ".slice(";
+                    if (range->start()) range->start()->accept(*this);
+                    else output_.stream() << "0ull";
+                    output_.stream() << ", ";
+                    if (range->end()) range->end()->accept(*this);
+                    else {
+                        output_.stream() << "__get_size(";
+                        expr.expression()->accept(*this);
+                        output_.stream() << ")";
+                    }
+                    output_.stream() << ")";
+                }
+                else {
+                    expr.expression()->accept(*this);
+                    output_.stream() << "[";
+                    expr.index()->accept(*this);
+                    output_.stream() << "]";
+                }
         }
     }
 
@@ -1792,7 +1833,9 @@ namespace nemesis {
                 expr.condition()->accept(*this);
                 output_.stream() << "[" << temp << "];\n";
             }
+            emit_in_contracts(expr);
             expr.body()->accept(*this);
+            emit_out_contracts(expr);
             output_.line() << "}\n";
             if (expr.else_body()) {
                 output_.line() << "if (" << temp << " >= " << std::static_pointer_cast<ast::array_type>(expr.condition()->annotation().type)->size() << "ull) {\n";
@@ -1840,7 +1883,9 @@ namespace nemesis {
         output_.line() << "while ((" << temp << " = ";
         expr.condition()->accept(*this);
         output_.stream() << ")) {\n";
+        emit_in_contracts(expr);
         expr.body()->accept(*this);
+        emit_out_contracts(expr);
         output_.line() << "}\n";
         if (expr.else_body()) {
             output_.line() << "if (!" << temp << ") {\n";

@@ -401,7 +401,9 @@ namespace nemesis {
             ast::pointer<ast::expression> body = nullptr;
 
             if (match(token::kind::equal)) {
-                body = expect(expression(), "expression", "I need the damn function body here, clown!", impl::function_expr_explanation);
+                auto expr = expect(expression(), "expression", "I need the damn function body here, clown!", impl::function_expr_explanation);
+                ast::pointers<ast::statement> statements { ast::create<ast::expression_statement>(expr->range(), expr) };
+                body = ast::create<ast::block_expression>(expr->range(), statements);
             }
             else {
                 body = expect(block_expression(), "body", "I need the damn function body here, clown!", impl::function_expr_explanation);
@@ -2397,7 +2399,9 @@ namespace nemesis {
             ast::pointer<ast::expression> body = nullptr;
             
             if (match(token::kind::equal)) {
-                body = expect(expression(), "expression", "I need function body after `=`, idiot!", impl::function_decl_explanation);
+                auto expr = expect(expression(), "expression", "I need function body after `=`, idiot!", impl::function_decl_explanation);
+                ast::pointers<ast::statement> statements { ast::create<ast::expression_statement>(expr->range(), expr) };
+                body = ast::create<ast::block_expression>(expr->range(), statements);
             }
             else {
                 body = block_expression();
@@ -2489,7 +2493,9 @@ namespace nemesis {
             ast::pointer<ast::expression> body = nullptr;
             
             if (match(token::kind::equal)) {
-                body = expect(expression(), "expression", "I need property body after `=`, idiot!", impl::property_decl_explanation);
+                auto expr = expect(expression(), "expression", "I need property body after `=`, idiot!", impl::property_decl_explanation);
+                ast::pointers<ast::statement> statements { ast::create<ast::expression_statement>(expr->range(), expr) };
+                body = ast::create<ast::block_expression>(expr->range(), statements);
             }
             else {
                 body = block_expression();

@@ -532,7 +532,7 @@ Se l'accesso provoca overflow, il programma fallisce.
 // accesso a carattere singolo 's'
 <b>val</b> c = str[3]
 // sottostringa 'plain`
-<b>val</b> view: <b>chars</b> = &str[10..15]
+<b>val</b> view: <b>chars</b> = str[10..15]
 </code></pre>
 
 > **Nota**: la differenza fra `chars` e `[byte]` è di natura puramente formale e consiste solo nell'interpretazione dei byte per la decodifica dei caratteri Unicode. Quando si passa il tipo `chars` come parametro si deve tener conto che si tratta di un riferimento.

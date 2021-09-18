@@ -461,16 +461,20 @@ namespace nemesis {
             if (options_.is(options::kind::tokens)) message(impl::tokens_to_string(tokens));
             // construction of syntax tree associated to current file
             parser parser(tokens, file, diagnostic_publisher_);
-            if (auto ast = parser.parse()) {
-                file.ast(ast);
-                // if option '-ast' is specified then the syntax tree is printed for all sources
-                if (options_.is(options::kind::ast)) message(impl::ast_to_string(file.name(), ast));
-            }
+            if (auto ast = parser.parse()) file.ast(ast);
         }
         // semantic checking is performed on all packages, so from all source files are costructed workspaces
         // and definitions inside those are fully analyzed and annotated
         checker checker(compilation);
         checker.check();
+        // prints abstract syntax tree
+        for (auto source : source_handler_.sources()) {
+            source_file& file = *source.second;
+            if (file.ast()) {
+                // if option '-ast' is specified then the syntax tree is printed for all sources
+                if (options_.is(options::kind::ast)) message(impl::ast_to_string(file.name(), std::dynamic_pointer_cast<ast::statement>(file.ast())));
+            }
+        }
         // if errors were detected, then we exit with failure without code generation
         if (diagnostic_publisher_.errors() > 0) {
             message("compilation failed due to $ damned errors of yours!", diagnostic_publisher_.errors());
