@@ -640,7 +640,99 @@ namespace nemesis {
     
     void code_generator::visit(const ast::extern_declaration& decl) {}
     
-    void code_generator::visit(const ast::range_declaration& decl) {}
+    void code_generator::visit(const ast::range_declaration& decl)
+    {
+        if (decl.generic()) return;
+
+        auto range_type = std::dynamic_pointer_cast<ast::range_type>(decl.annotation().type);
+
+        {
+            guard guard(output_);
+            output_.line() << prototype(&decl) << " {\n";
+            {
+                struct guard inner(output_);
+                // first emits vpointers if any
+                if (types::implementors().count(decl.annotation().type)) {
+                    struct guard inner(output_);
+
+                    for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                        auto bname = fullname(behaviour->declaration());
+                        output_.line() << "__vtable_" << bname << "* __vptr_" << bname << ";\n";
+                    }
+                }
+                // then fields
+                output_.line() << emit(range_type->base(), "__value") << ";\n";
+                // default constructor
+                output_.line() << emit(decl.annotation().type) << "() = default;\n";
+                // value constructor
+                output_.line() << emit(decl.annotation().type) << "(" << emit(range_type->base(), "value") << ", const char* file, int line, int column);\n";
+            }
+            output_.line() << "};\n";
+        }
+
+        if (checker_.scopes().count(&decl)) {
+            for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
+            for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
+        }
+
+        // emit vtables for this type
+        if (types::implementors().count(decl.annotation().type)) {
+            struct guard inner(output_);
+
+            for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                auto bname = fullname(behaviour->declaration());
+                output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
+                // set dynamic type of this vptr inside structure
+                output_.stream() << std::hash<std::string>()(decl.annotation().type->string()) << "ull, ";
+                // set offset of this vptr inside structure
+                output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
+                // fill vtable with function pointers
+                for (auto prototype : static_cast<const ast::behaviour_declaration*>(behaviour->declaration())->declarations()) {
+                    output_.stream() << ", ";
+                    if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                    else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                }
+                output_.stream() << " };\n";
+            }
+        }
+
+        // emit constructor initializing virtual pointers eventually
+        {
+            struct guard inner(output_);
+            unsigned ifield = 0;
+            output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "(" << emit(range_type->base(), "value") << ", const char* file, int line, int column) : ";
+            ifield = 0;
+            // initialize vpointers
+            if (types::implementors().count(decl.annotation().type)) {
+                for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                    auto bname = fullname(behaviour->declaration());
+                    if (ifield > 0) output_.stream() << ", ";
+                    output_.stream() << "__vptr_" << bname << "(&__vtable_" << bname << "_for_" << emit(decl.annotation().type) << ")";
+                    ++ifield;
+                }
+            }
+            // initialize value field
+            if (ifield > 0) output_.stream() << ", ";
+            output_.stream() << "__value(value)";
+            output_.stream() << " {\n";
+            // checked control on value
+            output_.line() << "#if __DEVELOPMENT__\n";
+            {
+                struct guard inner(output_);
+                auto range = std::dynamic_pointer_cast<ast::range_expression>(decl.constraint());
+                output_.line() << "__assert(";
+                if (range->start()) output_.stream() << "value < " << emit(range->start()->annotation().value);
+                if (range->end()) {
+                    if (range->start()) output_.stream() << " || ";
+                    if (range->is_inclusive()) output_.stream() << "value > " << emit(range->end()->annotation().value);
+                    else output_.stream() << "value >= " << emit(range->end()->annotation().value);
+                }
+                output_.stream() << ", __format(\"range value ? is out of bounds for type " << emit(decl.annotation().type) << "\", value), file, line, column);\n";
+            }
+            output_.line() << "#endif\n";
+            output_.line() << "}\n";
+        }
+    }
     
     void code_generator::visit(const ast::record_declaration& decl)
     {
@@ -1878,18 +1970,27 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
-        auto temp = "__c" + std::to_string(std::rand());
-        output_.line() << "bool " << temp << " = true;\n";
-        output_.line() << "while ((" << temp << " = ";
-        expr.condition()->accept(*this);
-        output_.stream() << ")) {\n";
-        emit_in_contracts(expr);
-        expr.body()->accept(*this);
-        emit_out_contracts(expr);
-        output_.line() << "}\n";
-        if (expr.else_body()) {
-            output_.line() << "if (!" << temp << ") {\n";
-            expr.else_body()->accept(*this);
+        if (expr.condition()) {
+            auto temp = "__c" + std::to_string(std::rand());
+            output_.line() << "bool " << temp << " = true;\n";
+            output_.line() << "while ((" << temp << " = ";
+            expr.condition()->accept(*this);
+            output_.stream() << ")) {\n";
+            emit_in_contracts(expr);
+            expr.body()->accept(*this);
+            emit_out_contracts(expr);
+            output_.line() << "}\n";
+            if (expr.else_body()) {
+                output_.line() << "if (!" << temp << ") {\n";
+                expr.else_body()->accept(*this);
+                output_.line() << "}\n";
+            }
+        }
+        else {
+            output_.line() << "while (true) {\n";
+            emit_in_contracts(expr);
+            expr.body()->accept(*this);
+            emit_out_contracts(expr);
             output_.line() << "}\n";
         }
     }

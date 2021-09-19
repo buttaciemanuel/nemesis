@@ -361,7 +361,14 @@ namespace nemesis {
             void open(bool flag) { open_ = flag; }
             void base(pointer<type> b) { base_ = b; }
             pointer<type> base() const { return base_; }
-            std::string string(bool absolute = true) const { return base_->string() + (open_ ? ".." : "..=") + base_->string(); }
+            std::string string(bool absolute = true) const 
+            { 
+                if (declaration_) {
+                    if (absolute) return prefix() + dynamic_cast<const ast::range_declaration*>(declaration_)->name().lexeme().string();
+                    else return dynamic_cast<const ast::range_declaration*>(declaration_)->name().lexeme().string();
+                }
+                return base_->string() + (open_ ? ".." : "..=") + base_->string(); 
+            }
             enum category category() const { return category::range_type; }
             ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
             {

@@ -2019,6 +2019,25 @@ namespace nemesis {
                                             publisher().publish(diag);
                                             mistake = true;
                                         }
+                                        else if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                            auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                            if (!types::assignment_compatible(expected_type, newexpr->annotation().type)) {
+                                                auto diag = diagnostic::builder()
+                                                    .severity(diagnostic::severity::error)
+                                                    .location(ambiguous->range().begin())
+                                                    .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), newexpr->annotation().type->string()))
+                                                    .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                    .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                    .build();
+                                    
+                                                publisher().publish(diag);
+                                                mistake = true;
+                                            }
+                                            else {
+                                                try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { newexpr->annotation().isparametric = true; }
+                                                sub.put(constant.get(), newexpr->annotation().value);
+                                            }
+                                        }
                                         else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
                                             auto diag = diagnostic::builder()
                                                 .severity(diagnostic::severity::error)
@@ -2055,7 +2074,27 @@ namespace nemesis {
                                 else {
                                     expr.generics().at(i)->accept(*this);
 
-                                    if (!types::assignment_compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
+                                    if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                        auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                        if (!types::assignment_compatible(expected_type, expr.generics().at(i)->annotation().type)) {
+                                            auto diag = diagnostic::builder()
+                                                .severity(diagnostic::severity::error)
+                                                .location(ambiguous->range().begin())
+                                                .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), expr.generics().at(i)->annotation().type->string()))
+                                                .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                .build();
+                                
+                                            publisher().publish(diag);
+                                            mistake = true;
+                                        }
+                                        else {
+                                            try {  expr.generics().at(i)->annotation().value = evaluate( expr.generics().at(i)); } catch (evaluator::generic_evaluation&) { concrete = false;  expr.generics().at(i)->annotation().isparametric = true; }
+                                            csubstitutions.emplace(constant.get(),  expr.generics().at(i)->annotation().value);
+                                            sub.put(constant.get(),  expr.generics().at(i)->annotation().value);
+                                        }
+                                    }
+                                    else if (!types::assignment_compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
                                         auto diag = diagnostic::builder()
                                             .severity(diagnostic::severity::error)
                                             .location(expr.generics().at(i)->range().begin())
@@ -2247,6 +2286,26 @@ namespace nemesis {
                                         publisher().publish(diag);
                                         mistake = true;
                                     }
+                                    // type of constant is a generic type
+                                    else if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                        auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                        if (!types::assignment_compatible(expected_type, newexpr->annotation().type)) {
+                                            auto diag = diagnostic::builder()
+                                                .severity(diagnostic::severity::error)
+                                                .location(ambiguous->range().begin())
+                                                .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), newexpr->annotation().type->string()))
+                                                .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                .build();
+                                
+                                            publisher().publish(diag);
+                                            mistake = true;
+                                        }
+                                        else {
+                                            try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { newexpr->annotation().isparametric = true; }
+                                            sub.put(constant.get(), newexpr->annotation().value);
+                                        }
+                                    }
                                     else if (!types::compatible(constant->annotation().type, newexpr->annotation().type)) {
                                         auto diag = diagnostic::builder()
                                             .severity(diagnostic::severity::error)
@@ -2282,7 +2341,26 @@ namespace nemesis {
                             else {
                                 expr.generics().at(i)->accept(*this);
 
-                                if (!types::compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
+                                if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                    auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                    if (!types::assignment_compatible(expected_type, expr.generics().at(i)->annotation().type)) {
+                                        auto diag = diagnostic::builder()
+                                            .severity(diagnostic::severity::error)
+                                            .location(ambiguous->range().begin())
+                                            .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), expr.generics().at(i)->annotation().type->string()))
+                                            .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                            .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                            .build();
+                            
+                                        publisher().publish(diag);
+                                        mistake = true;
+                                    }
+                                    else {
+                                        try { expr.generics().at(i)->annotation().value = evaluate(expr.generics().at(i)); } catch (evaluator::generic_evaluation&) { expr.generics().at(i)->annotation().isparametric = true; }
+                                        sub.put(constant.get(), expr.generics().at(i)->annotation().value);
+                                    }
+                                }
+                                else if (!types::compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
                                     auto diag = diagnostic::builder()
                                         .severity(diagnostic::severity::error)
                                         .location(expr.generics().at(i)->range().begin())
@@ -2423,6 +2501,27 @@ namespace nemesis {
                                             publisher().publish(diag);
                                             mistake = true;
                                         }
+                                        // type of constant is a generic type
+                                        else if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                            auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                            if (!types::assignment_compatible(expected_type, newexpr->annotation().type)) {
+                                                auto diag = diagnostic::builder()
+                                                    .severity(diagnostic::severity::error)
+                                                    .location(ambiguous->range().begin())
+                                                    .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), newexpr->annotation().type->string()))
+                                                    .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                    .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                    .build();
+                                    
+                                                publisher().publish(diag);
+                                                mistake = true;
+                                            }
+                                            else {
+                                                try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false; newexpr->annotation().isparametric = true; }
+                                                csubstitutions.emplace(constant.get(), newexpr->annotation().value);
+                                                sub.put(constant.get(), newexpr->annotation().value);
+                                            }
+                                        }
                                         else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
                                             auto diag = diagnostic::builder()
                                                 .severity(diagnostic::severity::error)
@@ -2459,7 +2558,27 @@ namespace nemesis {
                                 else {
                                     expr.generics().at(i)->accept(*this);
 
-                                    if (!types::assignment_compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
+                                    if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                        auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                        if (!types::assignment_compatible(expected_type, expr.generics().at(i)->annotation().type)) {
+                                            auto diag = diagnostic::builder()
+                                                .severity(diagnostic::severity::error)
+                                                .location(ambiguous->range().begin())
+                                                .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), expr.generics().at(i)->annotation().type->string()))
+                                                .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                .build();
+                                
+                                            publisher().publish(diag);
+                                            mistake = true;
+                                        }
+                                        else {
+                                            try {  expr.generics().at(i)->annotation().value = evaluate( expr.generics().at(i)); } catch (evaluator::generic_evaluation&) { concrete = false;  expr.generics().at(i)->annotation().isparametric = true; }
+                                            csubstitutions.emplace(constant.get(),  expr.generics().at(i)->annotation().value);
+                                            sub.put(constant.get(),  expr.generics().at(i)->annotation().value);
+                                        }
+                                    }
+                                    else if (!types::assignment_compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
                                         auto diag = diagnostic::builder()
                                             .severity(diagnostic::severity::error)
                                             .location(expr.generics().at(i)->range().begin())
@@ -2723,6 +2842,28 @@ namespace nemesis {
                                             publisher().publish(diag);
                                             mistake = true;
                                         }
+                                        // type of constant is a generic type
+                                        else if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                            auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                            if (!types::assignment_compatible(expected_type, newexpr->annotation().type)) {
+                                                auto diag = diagnostic::builder()
+                                                    .severity(diagnostic::severity::error)
+                                                    .location(ambiguous->range().begin())
+                                                    .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), newexpr->annotation().type->string()))
+                                                    .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                    .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                    .build();
+                                    
+                                                publisher().publish(diag);
+                                                mistake = true;
+                                            }
+                                            else {
+                                                try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false; newexpr->annotation().isparametric = true; }
+                                                csubstitutions.emplace(constant.get(), newexpr->annotation().value);
+                                                sub.put(constant.get(), newexpr->annotation().value);
+                                            }
+                                        }
+                                        // normal substitution
                                         else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
                                             auto diag = diagnostic::builder()
                                                 .severity(diagnostic::severity::error)
@@ -2759,7 +2900,27 @@ namespace nemesis {
                                 else {
                                     expr.generics().at(i)->accept(*this);
 
-                                    if (!types::assignment_compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
+                                    if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                        auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                        if (!types::assignment_compatible(expected_type, expr.generics().at(i)->annotation().type)) {
+                                            auto diag = diagnostic::builder()
+                                                .severity(diagnostic::severity::error)
+                                                .location(ambiguous->range().begin())
+                                                .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), expr.generics().at(i)->annotation().type->string()))
+                                                .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                .build();
+                                
+                                            publisher().publish(diag);
+                                            mistake = true;
+                                        }
+                                        else {
+                                            try {  expr.generics().at(i)->annotation().value = evaluate( expr.generics().at(i)); } catch (evaluator::generic_evaluation&) { concrete = false;  expr.generics().at(i)->annotation().isparametric = true; }
+                                            csubstitutions.emplace(constant.get(),  expr.generics().at(i)->annotation().value);
+                                            sub.put(constant.get(),  expr.generics().at(i)->annotation().value);
+                                        }
+                                    }
+                                    else if (!types::assignment_compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
                                         auto diag = diagnostic::builder()
                                             .severity(diagnostic::severity::error)
                                             .location(expr.generics().at(i)->range().begin())
@@ -2977,6 +3138,25 @@ namespace nemesis {
                                         publisher().publish(diag);
                                         mistake = true;
                                     }
+                                    else if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                        auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                        if (!types::assignment_compatible(expected_type, newexpr->annotation().type)) {
+                                            auto diag = diagnostic::builder()
+                                                .severity(diagnostic::severity::error)
+                                                .location(ambiguous->range().begin())
+                                                .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), newexpr->annotation().type->string()))
+                                                .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                .build();
+                                
+                                            publisher().publish(diag);
+                                            mistake = true;
+                                        }
+                                        else {
+                                            try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false;  newexpr->annotation().isparametric = true; }
+                                            sub.put(constant.get(), newexpr->annotation().value);
+                                        }
+                                    }
                                     else if (!types::compatible(constant->annotation().type, newexpr->annotation().type)) {
                                         auto diag = diagnostic::builder()
                                             .severity(diagnostic::severity::error)
@@ -3011,8 +3191,27 @@ namespace nemesis {
                             }
                             else {
                                 expr.generics().at(i)->accept(*this);
-
-                                if (!types::compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
+                                
+                                if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                    auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                    if (!types::assignment_compatible(expected_type, expr.generics().at(i)->annotation().type)) {
+                                        auto diag = diagnostic::builder()
+                                            .severity(diagnostic::severity::error)
+                                            .location(ambiguous->range().begin())
+                                            .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), expr.generics().at(i)->annotation().type->string()))
+                                            .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                            .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                            .build();
+                            
+                                        publisher().publish(diag);
+                                        mistake = true;
+                                    }
+                                    else {
+                                        try {  expr.generics().at(i)->annotation().value = evaluate( expr.generics().at(i)); } catch (evaluator::generic_evaluation&) { concrete = false;  expr.generics().at(i)->annotation().isparametric = true; }
+                                        sub.put(constant.get(),  expr.generics().at(i)->annotation().value);
+                                    }
+                                }
+                                else if (!types::compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
                                     auto diag = diagnostic::builder()
                                         .severity(diagnostic::severity::error)
                                         .location(expr.generics().at(i)->range().begin())
@@ -3167,6 +3366,25 @@ namespace nemesis {
                                             publisher().publish(diag);
                                             mistake = true;
                                         }
+                                        else if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                            auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                            if (!types::assignment_compatible(expected_type, newexpr->annotation().type)) {
+                                                auto diag = diagnostic::builder()
+                                                    .severity(diagnostic::severity::error)
+                                                    .location(ambiguous->range().begin())
+                                                    .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), newexpr->annotation().type->string()))
+                                                    .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                    .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                    .build();
+                                    
+                                                publisher().publish(diag);
+                                                mistake = true;
+                                            }
+                                            else {
+                                                try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false;  newexpr->annotation().isparametric = true; }
+                                                sub.put(constant.get(), newexpr->annotation().value);
+                                            }
+                                        }
                                         else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
                                             auto diag = diagnostic::builder()
                                                 .severity(diagnostic::severity::error)
@@ -3202,8 +3420,28 @@ namespace nemesis {
                                 }
                                 else {
                                     expr.generics().at(i)->accept(*this);
-
-                                    if (!types::assignment_compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
+                                    
+                                    if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                        auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                        if (!types::assignment_compatible(expected_type, expr.generics().at(i)->annotation().type)) {
+                                            auto diag = diagnostic::builder()
+                                                .severity(diagnostic::severity::error)
+                                                .location(ambiguous->range().begin())
+                                                .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), expr.generics().at(i)->annotation().type->string()))
+                                                .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                .build();
+                                
+                                            publisher().publish(diag);
+                                            mistake = true;
+                                        }
+                                        else {
+                                            try {  expr.generics().at(i)->annotation().value = evaluate( expr.generics().at(i)); } catch (evaluator::generic_evaluation&) { concrete = false;  expr.generics().at(i)->annotation().isparametric = true; }
+                                            csubstitutions.emplace(constant.get(),  expr.generics().at(i)->annotation().value);
+                                            sub.put(constant.get(),  expr.generics().at(i)->annotation().value);
+                                        }
+                                    }
+                                    else if (!types::assignment_compatible(constant->annotation().type, expr.generics().at(i)->annotation().type)) {
                                         auto diag = diagnostic::builder()
                                             .severity(diagnostic::severity::error)
                                             .location(expr.generics().at(i)->range().begin())
@@ -4289,6 +4527,25 @@ namespace nemesis {
                                                 publisher().publish(diag);
                                                 mistake = true;
                                             }
+                                            else if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                                auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                                if (!types::assignment_compatible(expected_type, newexpr->annotation().type)) {
+                                                    auto diag = diagnostic::builder()
+                                                        .severity(diagnostic::severity::error)
+                                                        .location(ambiguous->range().begin())
+                                                        .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), newexpr->annotation().type->string()))
+                                                        .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                        .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                        .build();
+                                        
+                                                    publisher().publish(diag);
+                                                    mistake = true;
+                                                }
+                                                else {
+                                                    try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false;  newexpr->annotation().isparametric = true; }
+                                                    sub.put(constant.get(), newexpr->annotation().value);
+                                                }
+                                            }
                                             else if (!types::compatible(constant->annotation().type, newexpr->annotation().type)) {
                                                 auto diag = diagnostic::builder()
                                                     .severity(diagnostic::severity::error)
@@ -4324,7 +4581,26 @@ namespace nemesis {
                                     else {
                                         identifier->generics().at(i)->accept(*this);
 
-                                        if (!types::compatible(constant->annotation().type, identifier->generics().at(i)->annotation().type)) {
+                                        if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                            auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                            if (!types::assignment_compatible(expected_type, identifier->generics().at(i)->annotation().type)) {
+                                                auto diag = diagnostic::builder()
+                                                    .severity(diagnostic::severity::error)
+                                                    .location(ambiguous->range().begin())
+                                                    .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), identifier->generics().at(i)->annotation().type->string()))
+                                                    .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                    .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                    .build();
+                                    
+                                                publisher().publish(diag);
+                                                mistake = true;
+                                            }
+                                            else {
+                                                try { identifier->generics().at(i)->annotation().value = evaluate(identifier->generics().at(i)); } catch (evaluator::generic_evaluation&) { concrete = false;  identifier->generics().at(i)->annotation().isparametric = true; }
+                                                sub.put(constant.get(), identifier->generics().at(i)->annotation().value);
+                                            }
+                                        }
+                                        else if (!types::compatible(constant->annotation().type, identifier->generics().at(i)->annotation().type)) {
                                             auto diag = diagnostic::builder()
                                                 .severity(diagnostic::severity::error)
                                                 .location(identifier->generics().at(i)->range().begin())
@@ -4649,7 +4925,26 @@ namespace nemesis {
                                                 publisher().publish(diag);
                                                 mistake = true;
                                             }
-                                            else if (!types::compatible(constant->annotation().type, newexpr->annotation().type)) {
+                                            else if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                                auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                                if (!types::assignment_compatible(expected_type, newexpr->annotation().type)) {
+                                                    auto diag = diagnostic::builder()
+                                                        .severity(diagnostic::severity::error)
+                                                        .location(ambiguous->range().begin())
+                                                        .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), newexpr->annotation().type->string()))
+                                                        .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                        .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                        .build();
+                                        
+                                                    publisher().publish(diag);
+                                                    mistake = true;
+                                                }
+                                                else {
+                                                    try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false;  newexpr->annotation().isparametric = true; }
+                                                    sub.put(constant.get(), newexpr->annotation().value);
+                                                }
+                                            } 
+                                            else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
                                                 auto diag = diagnostic::builder()
                                                     .severity(diagnostic::severity::error)
                                                     .location(ambiguous->range().begin())
@@ -5202,7 +5497,26 @@ namespace nemesis {
                                 else {
                                     identifier->generics().at(i)->accept(*this);
 
-                                    if (!types::compatible(constant->annotation().type, identifier->generics().at(i)->annotation().type)) {
+                                    if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                        auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                        if (!types::assignment_compatible(expected_type, identifier->generics().at(i)->annotation().type)) {
+                                            auto diag = diagnostic::builder()
+                                                .severity(diagnostic::severity::error)
+                                                .location(ambiguous->range().begin())
+                                                .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), identifier->generics().at(i)->annotation().type->string()))
+                                                .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                .build();
+                                
+                                            publisher().publish(diag);
+                                            mistake = true;
+                                        }
+                                        else {
+                                            try { identifier->generics().at(i)->annotation().value = evaluate(identifier->generics().at(i)); } catch (evaluator::generic_evaluation&) { identifier->generics().at(i)->annotation().isparametric = true; }
+                                            sub.put(constant.get(), identifier->generics().at(i)->annotation().value);
+                                        }
+                                    }
+                                    else if (!types::compatible(constant->annotation().type, identifier->generics().at(i)->annotation().type)) {
                                         auto diag = diagnostic::builder()
                                             .severity(diagnostic::severity::error)
                                             .location(identifier->generics().at(i)->range().begin())

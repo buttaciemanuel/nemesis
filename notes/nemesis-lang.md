@@ -127,7 +127,7 @@ Una variabile e l'oggetto associato possono ricadere in due definizioni.
 
 + **Immutabile**: si ha quando una variabile non cambia contenuto e quando il contenuto non muta il proprio stato interno. Ciò implica che una variabile non possa essere reinizializzata e il corrispettivo oggetto contenuto non possa subire modifiche interne. Quindi il concetto si estende sia al contenitore che al contenuto.
 
-  <pre><code><b>val</b> person = Person(name: "John Doe", age: 35 )
+  <pre><code><b>val</b> person = Person(name: "John Doe", age: 35)
   // errore: la variabile è dichiarata come immutabile
   person = Person(name: "Sherlock Holmes", age: 40)
   // errore: l'oggetto è dichiarato come immutabile
