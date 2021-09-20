@@ -141,6 +141,7 @@ private:
 template<typename T>
 class __slice {
 public:
+    constexpr __slice() : data_(nullptr), size_(0) {}
     constexpr __slice(T* data, std::size_t size) : data_(data), size_(size) {}
     constexpr __slice(std::initializer_list<T> init, std::size_t size) : data_(const_cast<T*>(init.begin())), size_(size) {}
     constexpr std::size_t size() const { return size_; }
@@ -273,11 +274,15 @@ private:
 
 struct __none {};
 
-template<typename T> __slice<T> __allocate(std::size_t n) { return __slice<T>(new T[n], n); }
+template<typename T> __slice<T> __allocate(std::size_t n) try { 
+    return __slice<T>(new T[n], n); 
+}
+catch (std::bad_alloc&) {
+    __crash(__format("dynamic allocation failed because of requested size ?, f*ck...", n));
+    return __slice<T>();
+}
 
 template<typename T> void __deallocate(__slice<T> slice) { delete[] slice.data(); }
-
-template<typename T> inline void __free(T* memory) { delete[] memory; }
 
 template<typename T> constexpr std::size_t __get_size(__slice<T> slice) { return slice.size(); }
 

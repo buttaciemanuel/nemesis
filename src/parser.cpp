@@ -2894,7 +2894,7 @@ namespace nemesis {
             ast::pointer<ast::expression> type_expr = expect(type_expression(), "type", "I need to known the name of the type to extend, don't you think?", impl::extend_decl_explanation);
             ast::pointers<ast::expression> behaviours;
 
-            if (/*!dynamic_cast<ast::identifier_type_expression*>(type_expr.get())*/!dynamic_cast<ast::path_type_expression*>(type_expr.get())) {
+            if (!dynamic_cast<ast::path_type_expression*>(type_expr.get())) {
                 report(type_expr->range(), "I need a behaviour type name here, not this sh*t!", impl::extend_decl_explanation, "expected name");
                 type_expr->invalid(true);
                 err = true;
@@ -2904,7 +2904,7 @@ namespace nemesis {
                 do {
                     ast::pointer<ast::expression> behaviour = expect(type_expression(), "type", diagnostic::format("I can't see any f*cking behaviour type name after `$`, dammit!", previous().lexeme()), impl::extend_decl_explanation);
 
-                    if (/*!dynamic_cast<ast::identifier_type_expression*>(behaviour.get())*/!dynamic_cast<ast::path_type_expression*>(behaviour.get())) {
+                    if (!dynamic_cast<ast::path_type_expression*>(behaviour.get())) {
                         report(behaviour->range(), "This is not a behaviour name! You must specifiy a user-defined type name here!", impl::extend_decl_explanation, "expected type");
                         behaviour->invalid(true);
                         err = true;
@@ -2945,7 +2945,17 @@ namespace nemesis {
                             declaration = expect(property_declaration(), "declaration", "I was expecting a property declaration here!", impl::extend_decl_explanation);
                             break;
                         case token::kind::type_kw:
-                            declaration = expect(type_declaration(), "declaration", "I was expecting a type declaration here!", impl::extend_decl_explanation);
+                            declaration = expect(type_declaration(), "declaration", "I was expecting a type alias declaration here!", impl::extend_decl_explanation);
+                            if (auto alias = std::dynamic_pointer_cast<ast::alias_declaration>(declaration)) {
+                                if (alias->generic()) {
+                                    declaration->invalid(true);
+                                    report(std::dynamic_pointer_cast<ast::type_declaration>(declaration)->name().range(), "Type alias declarations inside extend blocks cannot have their own generic parameters, idiot!", impl::extend_decl_explanation);
+                                }
+                            }
+                            else {
+                                declaration->invalid(true);
+                                report(std::dynamic_pointer_cast<ast::type_declaration>(declaration)->name().range(), "Only type alias declarations are allowed inside extend blocks, idiot!", impl::extend_decl_explanation);
+                            }
                             break;
                         default:
                             expect(declaration, "declaration", "I want a damn function, property, type or constant declaration in this place!", impl::extend_decl_explanation);
@@ -2953,7 +2963,7 @@ namespace nemesis {
 
                     separator(declaration);
                     declaration->hidden(hidden);
-                    declarations.push_back(declaration);
+                    if (!declaration->invalid()) declarations.push_back(declaration);
                 }
                 
                 parenthesis(token::kind::right_brace, "You forgot `}` in a extend block, idiot!", impl::extend_decl_explanation, brace);

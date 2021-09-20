@@ -394,6 +394,10 @@ namespace nemesis {
                  */
                 const ast::node* scope = nullptr;
                 /**
+                 * Extension block
+                 */
+                const ast::declaration* extendblock = nullptr;
+                /**
                  * Visited symbol for analysis
                  */
                 bool visited : 1;
@@ -734,6 +738,9 @@ namespace nemesis {
              */
             mutable pointer<ast::expression> condition_;
         };
+
+        class extend_declaration;
+
         /**
          * Root class for declarations inside the AST
          */
@@ -761,6 +768,10 @@ namespace nemesis {
              * Clone a declaration
              */
             virtual pointer<declaration> clone() const = 0;
+            /**
+             * Set/get extension block
+             */
+            const ast::extend_declaration*& extension() const { return extension_; }
         protected:
             /**
              * @param range Range in source code
@@ -771,6 +782,10 @@ namespace nemesis {
              * Hidden flag
              */
             bool hidden_;
+            /**
+             * Extension block, if any
+             */
+            mutable const ast::extend_declaration* extension_ = nullptr;
         };
         /**
          * Clone a list of expressions

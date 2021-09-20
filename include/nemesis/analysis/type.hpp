@@ -76,6 +76,9 @@ namespace nemesis {
                 for (const ast::node* node = declaration_; node;) {
                     if (auto declaration = dynamic_cast<const ast::declaration*>(node)) {
                         if (auto typescope = dynamic_cast<const ast::type_declaration*>(declaration->annotation().scope)) result.insert(0, typescope->name().lexeme().string().append("."));
+                        if (auto genericscope = dynamic_cast<const ast::generic_clause_declaration*>(declaration_->annotation().scope)) {
+                            if (auto typescope = dynamic_cast<const ast::type_declaration*>(genericscope->annotation().scope)) result.insert(0, typescope->name().lexeme().string().append("."));
+                        }
                         node = declaration->annotation().scope;
                     }
                     else break;
@@ -86,6 +89,9 @@ namespace nemesis {
             ast::pointer<ast::type> parent() const {
                 if (declaration_) {
                     if (auto typescope = dynamic_cast<const ast::type_declaration*>(declaration_->annotation().scope)) return typescope->annotation().type;
+                    if (auto genericscope = dynamic_cast<const ast::generic_clause_declaration*>(declaration_->annotation().scope)) {
+                        if (auto typescope = dynamic_cast<const ast::type_declaration*>(genericscope->annotation().scope)) return typescope->annotation().type;
+                    }
                 }
 
                 return nullptr;

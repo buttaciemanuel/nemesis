@@ -1674,7 +1674,7 @@ extend-member-declaration : identifier <b>(</b> parameter-list? <b>)</b> type? b
                           | function-declaration
                           | property-declaration
                           | const-declaration
-                          | type-declaration
+                          | <b>type</b> identifier <b>=</b> type
 
 concept-declaration : <b>concept</b> generic-parameter-list? identifier ( <b>as</b> constraint-or-expr )? <b>{</b> concept-member-declaration+ <b>}</b>?
 

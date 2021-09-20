@@ -30,6 +30,7 @@ namespace nemesis {
         for (auto workspace : checker_.compilation().workspaces()) {
             exported.stream() << "/* Forward declarations from workspace '" << workspace.first << "' */\n";
             // if package associated to current workspace is builtin, then workspace is not compiled
+            //std::cout << workspace.first << " " << std::flush << workspace.second->package << '\n';
             if (!checker_.compilation().package(workspace.second->package).builtin) {
                 // sets current library
                 workspace_ = workspace.second;
@@ -500,7 +501,7 @@ namespace nemesis {
 
         auto name = result.str();
 
-        std::replace_if(name.begin(), name.end(), [](char c) { return c == '(' || c == ')'; }, '_');
+        std::replace_if(name.begin(), name.end(), [](char c) { return c == '.' || c == '(' || c == ')'; }, '_');
         name = std::regex_replace(name, std::regex(", |,"), "_");
         
         return name;
@@ -753,11 +754,12 @@ namespace nemesis {
             }
             // then fields
             for (auto field : decl.fields()) field->accept(*this);
-            // default constructor
-            output_.line() << emit(decl.annotation().type) << "() = default;\n";
-            // prototype of constructor for fields
+            // constructors
             {
                 struct guard inner(output_);
+                // default constructor
+                output_.line() << emit(decl.annotation().type) << "() = default;\n";
+                // constructor with fields
                 unsigned ifield = 0;
                 output_.line() << emit(decl.annotation().type) << "(";
                 for (auto field : decl.fields()) {
@@ -1836,8 +1838,9 @@ namespace nemesis {
         if (auto fn = checker_.scopes().at(&expr)->outscope(environment::kind::function)) {
             auto body = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->body().get() : static_cast<const ast::property_declaration*>(fn)->body().get();
             is_function_body = &expr == body;
+            auto result_type = std::static_pointer_cast<ast::function_type>(dynamic_cast<const ast::declaration*>(fn)->annotation().type)->result();
             if (is_function_body && !types::compatible(expr.annotation().type, types::unit())) {
-                output_.line() << emit(expr.annotation().type, "__result") << ";\n";
+                output_.line() << emit(result_type, "__result") << ";\n";
                 result_vars.push("__result");
             }
         }

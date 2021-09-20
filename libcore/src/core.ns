@@ -17,9 +17,6 @@ function(T) allocate(n: usize) [T] = []
 // deallocate a buffer of objects dynamically
 function(T) deallocate(slice: [T]) {}
 
-// dynamically allocate a single object
-function(T) free(memory: *T) {}
-
 // return size occupied by the type
 function(T) sizeof() usize = 0usize
 

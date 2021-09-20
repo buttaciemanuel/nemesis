@@ -446,8 +446,28 @@ namespace nemesis {
                     auto cloned = constant.second->clone();
                     cloned->annotation().resolved = cloned->annotation().visited = false;
                     cloned->annotation().scope = clone.get();
-                    subs.root(cloned.get());
-                    subs.substitute();
+                    //subs.root(cloned.get());
+                    //subs.substitute();
+                    //declarations.push_back(cloned);
+                    if (auto extblock = constant.second->extension()) {
+                        auto typexpr = std::dynamic_pointer_cast<ast::path_type_expression>(extblock->type_expression());
+                        ast::pointers<ast::expression> generics;
+                        if (auto member = std::dynamic_pointer_cast<ast::identifier_expression>(typexpr->member())) generics = member->generics();
+                        else generics = std::dynamic_pointer_cast<ast::identifier_expression>(typexpr->expression())->generics();
+                        substitutions newsubs(scopes_.at(constant.second->annotation().scope), cloned.get());
+                        unsigned int iarg = 0;
+                        for (auto param : std::dynamic_pointer_cast<ast::generic_clause_declaration>(tdecl.generic())->parameters()) {
+                            if (auto cparam = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(param)) {
+                                newsubs.put(generics.at(iarg)->annotation().referencing, subs.constant(cparam.get())->second);
+                            }
+                            else if (auto tparam = std::dynamic_pointer_cast<ast::generic_type_parameter_declaration>(param)) {
+                                newsubs.put(generics.at(iarg)->annotation().referencing, subs.type(tparam.get())->second);
+                            }
+                            ++iarg;
+                        }
+                        newsubs.substitute();
+                    }
+                    // declaration is added
                     declarations.push_back(cloned);
                 }
 
@@ -457,10 +477,30 @@ namespace nemesis {
                     auto cloned = type.second->clone();
                     cloned->annotation().resolved = cloned->annotation().visited = false;
                     cloned->annotation().scope = clone.get();
-                    if (type.second->generic() && scopes_.count(type.second->generic().get())) subs.context(scopes_.at(type.second->generic().get()));
-                    else subs.context(context);
-                    subs.root(cloned.get());
-                    subs.substitute();
+                    //if (type.second->generic() && scopes_.count(type.second->generic().get())) subs.context(scopes_.at(type.second->generic().get()));
+                    //else subs.context(context);
+                    //subs.root(cloned.get());
+                    //subs.substitute();
+                    //declarations.push_back(cloned);
+                    if (auto extblock = type.second->extension()) {
+                        auto typexpr = std::dynamic_pointer_cast<ast::path_type_expression>(extblock->type_expression());
+                        ast::pointers<ast::expression> generics;
+                        if (auto member = std::dynamic_pointer_cast<ast::identifier_expression>(typexpr->member())) generics = member->generics();
+                        else generics = std::dynamic_pointer_cast<ast::identifier_expression>(typexpr->expression())->generics();
+                        substitutions newsubs(scopes_.at(type.second->annotation().scope), cloned.get());
+                        unsigned int iarg = 0;
+                        for (auto param : std::dynamic_pointer_cast<ast::generic_clause_declaration>(tdecl.generic())->parameters()) {
+                            if (auto cparam = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(param)) {
+                                newsubs.put(generics.at(iarg)->annotation().referencing, subs.constant(cparam.get())->second);
+                            }
+                            else if (auto tparam = std::dynamic_pointer_cast<ast::generic_type_parameter_declaration>(param)) {
+                                newsubs.put(generics.at(iarg)->annotation().referencing, subs.type(tparam.get())->second);
+                            }
+                            ++iarg;
+                        }
+                        newsubs.substitute();
+                    }
+                    // declaration is added
                     declarations.push_back(cloned);
                 }
 
@@ -470,8 +510,29 @@ namespace nemesis {
                     auto cloned = function.second->clone();
                     cloned->annotation().resolved = cloned->annotation().visited = false;
                     cloned->annotation().scope = clone.get();
-                    subs.root(cloned.get());
-                    subs.substitute();
+                    //subs.context(scopes_.at(function.second->annotation().scope));
+                    //subs.root(cloned.get());
+                    //subs.substitute();
+                    // substitution from parameters taken from extend block
+                    if (auto extblock = function.second->extension()) {
+                        auto typexpr = std::dynamic_pointer_cast<ast::path_type_expression>(extblock->type_expression());
+                        ast::pointers<ast::expression> generics;
+                        if (auto member = std::dynamic_pointer_cast<ast::identifier_expression>(typexpr->member())) generics = member->generics();
+                        else generics = std::dynamic_pointer_cast<ast::identifier_expression>(typexpr->expression())->generics();
+                        substitutions newsubs(scopes_.at(function.second->annotation().scope), cloned.get());
+                        unsigned int iarg = 0;
+                        for (auto param : std::dynamic_pointer_cast<ast::generic_clause_declaration>(tdecl.generic())->parameters()) {
+                            if (auto cparam = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(param)) {
+                                newsubs.put(generics.at(iarg)->annotation().referencing, subs.constant(cparam.get())->second);
+                            }
+                            else if (auto tparam = std::dynamic_pointer_cast<ast::generic_type_parameter_declaration>(param)) {
+                                newsubs.put(generics.at(iarg)->annotation().referencing, subs.type(tparam.get())->second);
+                            }
+                            ++iarg;
+                        }
+                        newsubs.substitute();
+                    }
+                    // declaration is added
                     declarations.push_back(cloned);
                 }
 
@@ -697,8 +758,8 @@ namespace nemesis {
 
             auto map = subs.map();
 
-            if (auto tspec = std::dynamic_pointer_cast<ast::type_expression>(clone->return_type_expression())) tspec->clear();
-            for (auto param : clone->parameters()) if (auto tspec = std::dynamic_pointer_cast<ast::type_expression>(std::static_pointer_cast<ast::parameter_declaration>(param)->type_expression())) tspec->clear();
+            //if (auto tspec = std::dynamic_pointer_cast<ast::type_expression>(clone->return_type_expression())) tspec->clear();
+            //for (auto param : clone->parameters()) if (auto tspec = std::dynamic_pointer_cast<ast::type_expression>(std::static_pointer_cast<ast::parameter_declaration>(param)->type_expression())) tspec->clear();
 
             std::unordered_map<std::string, types::parameter> arguments;
 
@@ -743,6 +804,11 @@ namespace nemesis {
 
             // adds instantiated function
             workspace->instantiated_functions.emplace(fname, clone);
+            // inserts in type scope
+            if (auto typescope = dynamic_cast<const ast::type_declaration*>(scopes_.at(fdecl.annotation().scope)->outscope(environment::kind::declaration))) {
+                clone->annotation().scope = typescope;
+                scopes_.at(typescope)->function(fname, clone.get());
+            }
 
             return clone;
         }
@@ -4844,7 +4910,6 @@ namespace nemesis {
                                 if (fn) test_immutable_assignment(*std::dynamic_pointer_cast<ast::parameter_declaration>(params.at(i)), *expr.arguments().at(i));
                             }
                             else {
-                                std::cout << fntype->formals().at(i) << "\n" << expr.arguments().at(i)->annotation().type << '\n';
                                 auto builder = diagnostic::builder()
                                             .severity(diagnostic::severity::error)
                                             .location(expr.arguments().at(i)->range().begin())
@@ -10003,10 +10068,16 @@ namespace nemesis {
 
     void checker::visit(const ast::generic_clause_declaration& decl) 
     {
+        if (decl.annotation().resolved) return;
+
+        decl.annotation().visited = true;
+
         for (auto param : decl.parameters()) {
             try { param->accept(*this); } catch (semantic_error&) { param->annotation().resolved = true; }
             if (param->invalid()) decl.invalid(true);
         }
+
+        decl.annotation().resolved = true;
     }
 
     void checker::visit(const ast::generic_const_parameter_declaration& decl) 
@@ -10319,6 +10390,7 @@ namespace nemesis {
                         publisher().publish(builder.build());
                         decl.invalid(true);
                     }
+                    else if (auto implicit = implicit_cast(result_type, exprstmt->expression())) exprstmt->expression() = implicit;
                 }
                 else if (dynamic_cast<const ast::return_statement*>(block->exprnode()));
                 // missing return statement or expression node
@@ -10596,6 +10668,10 @@ namespace nemesis {
     bool checker::is_string_convertible(ast::pointer<ast::type> type, const ast::property_declaration*& procedure) const
     {
         if (type->declaration()) {
+            // we don't know yet
+            if (type->category() == ast::type::category::generic_type) return true;
+            // concrete type must implement `str` property
+            if (scopes_.count(type->declaration()) == 0) return false;
             for (auto fn : scopes_.at(type->declaration())->functions()) {
                 if (fn.first != "str" || fn.second->kind() == ast::kind::function_declaration) continue;
                 auto fdecl = static_cast<const ast::property_declaration*>(fn.second);
@@ -10636,7 +10712,7 @@ namespace nemesis {
             }
 
             try {
-                decl.type_expression()->accept(*this); 
+                decl.type_expression()->accept(*this);
             } 
             catch (semantic_error&) {
                 decl.invalid(true);
@@ -10675,13 +10751,16 @@ namespace nemesis {
             auto saved = begin_scope(decl.type_expression()->annotation().type->declaration());
 
             if (auto generics = std::static_pointer_cast<ast::generic_clause_declaration>(decl.generic())) {
+                begin_scope(decl.generic().get());
                 for (auto generic : generics->parameters()) {
                     if (generic->invalid()) continue;
                     scope_->define(generic.get());
                 }
             }
 
-            for (ast::pointer<ast::node> stmt : decl.declarations()) try {
+            for (ast::pointer<ast::declaration> stmt : decl.declarations()) try {
+                // set extension block
+                stmt->extension() = &decl;
                 if (auto tdecl = std::dynamic_pointer_cast<ast::type_declaration>(stmt)) {
                     std::string name = tdecl->name().lexeme().string();
                     auto other = scope_->type(name, false);
@@ -10870,45 +10949,11 @@ namespace nemesis {
                 }
             }
             catch (semantic_error& err) { scope_ = saved; }
+        
+            scope_ = saved;
 
-            // for generic types' declarations
-            auto inner = scope_;
-            for (auto pair : scope_->types()) try {
-                if (pair.second->generic()) try { begin_scope(pair.second->generic().get()); pair.second->generic()->accept(*this); end_scope(); } catch (abort_error&) { throw; } catch (...) { scope_ = inner; }
-                scope_ = inner;
-
-                if (auto outclause = std::static_pointer_cast<ast::generic_clause_declaration>(decl.generic())) {
-                    if (auto inclause = std::static_pointer_cast<ast::generic_clause_declaration>(pair.second->generic())) {
-                        inclause->parameters().insert(inclause->parameters().end(), outclause->parameters().begin(), outclause->parameters().end());
-                    }
-                    else pair.second->generic() = outclause;
-                    types::parametric(pair.second->annotation().type, std::static_pointer_cast<ast::generic_clause_declaration>(pair.second->generic()));
-                }
-            }
-            catch (cyclic_symbol_error& err) {
-                // recursive type error is printed
-                publisher().publish(err.diagnostic());
-                // if we catch an exception then we consider type resolved, at least to minimize errors
-                // or false positives in detecting recursive cycles
-                pair.second->annotation().resolved = true;
-                // restore scope
-                scope_ = saved;
-            }
-            catch (semantic_error& err) {
-                // if we catch an exception then we consider type resolved, at least to minimize errors
-                // or false positives in detecting recursive cycles
-                pair.second->annotation().resolved = true;
-                // restore scope
-                scope_ = saved;
-            }
-
-            if (auto generics = std::static_pointer_cast<ast::generic_clause_declaration>(decl.generic())) {
-                for (auto generic : generics->parameters()) {
-                    if (generic->invalid()) continue;
-                    scope_->remove(generic.get());
-                }
-            }
-
+            for (ast::pointer<ast::declaration> stmt : decl.declarations()) scope_->define(stmt.get());
+            
             end_scope();
         }
         // evaluation and checking will be performed only if declaration is not generic because checking is delayed
@@ -12200,7 +12245,6 @@ namespace nemesis {
             expr.annotation().value = maybe_const->second;
             expr.annotation().type = maybe_const->second.type;
             expr.annotation().referencing = maybe_const->first;
-            std::cout << "generic const " << expr.identifier() << " has value " << expr.annotation().value << '\n';
         }
         else if (maybe_type != types().end()) {
             expr.annotation().istype = true;
