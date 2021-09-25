@@ -558,7 +558,8 @@ namespace nemesis {
             }
             case ast::type::category::function_type:
             {
-                auto ltype = std::dynamic_pointer_cast<ast::function_type>(left), rtype = std::dynamic_pointer_cast<ast::function_type>(right);    
+                auto ltype = std::dynamic_pointer_cast<ast::function_type>(left), rtype = std::dynamic_pointer_cast<ast::function_type>(right);
+                if (ltype->is_lambda() != rtype->is_lambda()) return false;
                 if (ltype->formals().size() != rtype->formals().size() || !compatible(ltype->result(), rtype->result(), strict)) return false;
                 for (size_t i = 0; i < ltype->formals().size(); ++i) {
                     if (!compatible(ltype->formals().at(i), rtype->formals().at(i), strict) || ltype->formals().at(i)->mutability != rtype->formals().at(i)->mutability) {
@@ -598,6 +599,8 @@ namespace nemesis {
         if (left->category() == ast::type::category::pointer_type && types::compatible(right, std::static_pointer_cast<ast::pointer_type>(left)->base(), false)) return true;
         // behaviour switch
         if (right->category() == ast::type::category::behaviour_type && left->category() != ast::type::category::behaviour_type) return assignment_compatible(right, left);
+        // range switch
+        if (right->category() == ast::type::category::range_type && left->category() != ast::type::category::range_type) return assignment_compatible(right, left);
 
         switch (left->category())
         {
@@ -661,6 +664,12 @@ namespace nemesis {
             case ast::type::category::variant_type:
                 if (std::static_pointer_cast<ast::variant_type>(left)->contains(right)) return true;
                 else return types::compatible(left, right, false);
+            // range (declared) type to integer type
+            case ast::type::category::range_type:
+            {
+                if (!left->declaration()) return types::compatible(left, right, false);
+                return types::assignment_compatible(std::dynamic_pointer_cast<ast::range_type>(left)->base(), right);
+            }
             default:
                 break;
         }

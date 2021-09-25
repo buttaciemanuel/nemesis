@@ -280,6 +280,40 @@ struct __lambda {
     virtual Result operator()(Args... args) = 0;
 };
 
+template<typename T>
+struct __range_iterator {
+public:
+    constexpr __range_iterator(T index) : index_(index) {}
+    constexpr T operator*() const { return index_; }
+    constexpr __range_iterator& operator++() 
+    {
+        ++index_;
+        return *this;
+    }
+    constexpr __range_iterator operator++(int) { return __range_iterator(index_++); }
+    constexpr bool operator<(const __range_iterator& other) { return index_ < other.index_; }
+    constexpr bool operator<=(const __range_iterator& other) { return index_ <= other.index_; }
+    constexpr bool operator>(const __range_iterator& other) { return index_ > other.index_; }
+    constexpr bool operator>=(const __range_iterator& other) { return index_ >= other.index_; }
+    constexpr bool operator==(const __range_iterator& other) { return index_ == other.index_; }
+    constexpr bool operator!=(const __range_iterator& other) { return index_ != other.index_; }
+private:
+    T index_;
+};
+
+template<typename T>
+struct __range {
+public:
+    constexpr __range() = default;
+    constexpr __range(T min = std::numeric_limits<T>::min(), T max = std::numeric_limits<T>::max()) : min_(min_), max_(max) {}
+    constexpr T min() const { return min_; }
+    constexpr T max() const { return max_; }
+    constexpr __range_iterator<T> begin() const { return __range_iterator<T>(min_); }
+    constexpr __range_iterator<T> end() const { return __range_iterator<T>(max_); }
+private:
+    T min_, max_;
+};
+
 struct __none {};
 
 template<typename T> __slice<T> __allocate(std::size_t n) try { 

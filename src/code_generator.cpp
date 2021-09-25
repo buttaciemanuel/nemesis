@@ -188,6 +188,13 @@ namespace nemesis {
 
             return result.str();
         }
+        else if (auto range_type = std::dynamic_pointer_cast<ast::range_type>(type)) {
+            std::ostringstream result;
+
+            result << "__range<" << emit(range_type->base()) << ">";
+
+            return result.str();
+        }
         // anonymous structure/variant is instantiated
         else if (type->category() == ast::type::category::structure_type || type->category() == ast::type::category::variant_type) return "__T" + std::to_string(std::hash<std::string>()(type->string()));
 
@@ -264,6 +271,13 @@ namespace nemesis {
             }
 
             result << ")";
+
+            return result.str();
+        }
+        else if (auto range_type = std::dynamic_pointer_cast<ast::range_type>(type)) {
+            std::ostringstream result;
+
+            result << "__range<" << emit(range_type->base()) << "> " << variable;
 
             return result.str();
         }
@@ -612,7 +626,7 @@ namespace nemesis {
 
         auto name = result.str();
 
-        std::replace_if(name.begin(), name.end(), [](char c) { return c == '.' || c == '(' || c == ')'; }, '_');
+        std::replace_if(name.begin(), name.end(), [](char c) { return c == ' ' || c == '.' || c == '(' || c == ')'; }, '_');
         name = std::regex_replace(name, std::regex(", |,"), "_");
         
         return name;
@@ -833,13 +847,13 @@ namespace nemesis {
                 struct guard inner(output_);
                 auto range = std::dynamic_pointer_cast<ast::range_expression>(decl.constraint());
                 output_.line() << "__assert(";
-                if (range->start()) output_.stream() << "value < " << emit(range->start()->annotation().value);
+                if (range->start()) output_.stream() << "value >= " << emit(range->start()->annotation().value);
                 if (range->end()) {
-                    if (range->start()) output_.stream() << " || ";
-                    if (range->is_inclusive()) output_.stream() << "value > " << emit(range->end()->annotation().value);
-                    else output_.stream() << "value >= " << emit(range->end()->annotation().value);
+                    if (range->start()) output_.stream() << " && ";
+                    if (range->is_inclusive()) output_.stream() << "value <= " << emit(range->end()->annotation().value);
+                    else output_.stream() << "value < " << emit(range->end()->annotation().value);
                 }
-                output_.stream() << ", __format(\"range value ? is out of bounds for type " << emit(decl.annotation().type) << "\", value), file, line, column);\n";
+                output_.stream() << ", __format(\"range value ? is out of bounds for type " << decl.annotation().type->string() << "!\", value), file, line, column);\n";
             }
             output_.line() << "#endif\n";
             output_.line() << "}\n";
@@ -1451,6 +1465,18 @@ namespace nemesis {
                         output_.stream() << ", " << std::hash<std::string>()(implementor->string()) << "ull, \"" << expr.binary_operator().location().filename << "\", " << expr.binary_operator().location().line << ", " << expr.binary_operator().location().column << ")";
                     }
                 }
+                // range type to value
+                else if (original->category() == ast::type::category::range_type && result->category() != ast::type::category::range_type) {
+                    output_.stream() << "(" << emit(result) << ")(";
+                    expr.left()->accept(*this);
+                    output_.stream() << ".__value)";
+                }
+                // value to range type
+                else if (original->category() != ast::type::category::range_type && result->category() == ast::type::category::range_type) {
+                    output_.stream() << emit(result) << "(";
+                    expr.left()->accept(*this);
+                    output_.stream() << ", \"" << expr.range().filename << "\", " << expr.range().bline << ", " << expr.range().bcolumn << ")";
+                }
                 else switch (result->category()) {
                     case ast::type::category::chars_type:
                         if (original->category() == ast::type::category::string_type) {
@@ -1633,6 +1659,19 @@ namespace nemesis {
 
         output_.stream() << "(";
         expr.expression()->accept(*this);
+        output_.stream() << ")";
+    }
+
+    void code_generator::visit(const ast::range_expression& expr)
+    {
+        if (emit_if_constant(expr)) return;
+
+        output_.stream() << emit(expr.annotation().type) << "(";
+        if (expr.start()) expr.start()->accept(*this);
+        if (expr.end()) {
+            if (expr.start()) output_.stream() << ", ";
+            expr.end()->accept(*this);
+        }
         output_.stream() << ")";
     }
 
@@ -1890,6 +1929,18 @@ namespace nemesis {
                output_.stream() << ", " << std::hash<std::string>()(implementor->string()) << "ull, \"" << expr.range().filename << "\", " << expr.range().bline << ", " << expr.range().bcolumn << ")";
             }
         }
+        // range type to value
+        else if (original->category() == ast::type::category::range_type && result->category() != ast::type::category::range_type) {
+            output_.stream() << "(" << emit(result) << ")(";
+            expr.expression()->accept(*this);
+            output_.stream() << ".__value)";
+        }
+        // value to range type
+        else if (original->category() != ast::type::category::range_type && result->category() == ast::type::category::range_type) {
+            output_.stream() << emit(result) << "(";
+            expr.expression()->accept(*this);
+            output_.stream() << ", \"" << expr.range().filename << "\", " << expr.range().bline << ", " << expr.range().bcolumn << ")";
+        }
         else switch (result->category()) {
             case ast::type::category::chars_type:
                 if (original->category() == ast::type::category::string_type) {
@@ -1950,7 +2001,7 @@ namespace nemesis {
             auto body = fn->kind() == ast::kind::function_expression ? static_cast<const ast::function_expression*>(fn)->body().get() : fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->body().get() : static_cast<const ast::property_declaration*>(fn)->body().get();
             is_function_body = &expr == body;
             auto result_type = std::static_pointer_cast<ast::function_type>(fn->kind() == ast::kind::function_expression ? dynamic_cast<const ast::expression*>(fn)->annotation().type : dynamic_cast<const ast::declaration*>(fn)->annotation().type)->result();
-            if (is_function_body && !types::compatible(expr.annotation().type, types::unit())) {
+            if (is_function_body && !types::compatible(result_type, types::unit())) {
                 output_.line() << emit(result_type, "__result") << ";\n";
                 result_vars.push("__result");
             }
@@ -1993,8 +2044,10 @@ namespace nemesis {
             // on exit we must emit out contracts
             emit_out_contracts(*checker_.scopes().at(&expr)->outscope(environment::kind::function));
             // return result
-            result_vars.pop();
-            output_.line() << "return __result;\n";
+            if (!result_vars.empty()) {
+                result_vars.pop();
+                output_.line() << "return __result;\n";
+            }
         }
     }
 
@@ -2026,7 +2079,35 @@ namespace nemesis {
         
         switch (expr.condition()->annotation().type->category()) {
         case ast::type::category::range_type:
-            throw std::invalid_argument("range type not yet implemented in core.cpp");
+        {
+            auto temp = "__i" + std::to_string(std::rand());
+            output_.line() << "auto " << temp << " = ";
+            expr.condition()->accept(*this);
+            output_.stream() << ".begin();\n";
+            output_.line() << "for (; " << temp;
+            if (std::dynamic_pointer_cast<ast::range_type>(expr.condition()->annotation().type)->is_open()) output_.stream() << "< ";
+            else output_.stream() << "<= ";
+            expr.condition()->accept(*this);
+            output_.stream() << ".end(); ++" << temp << ") {\n";
+            {
+                struct guard inner(output_);
+                expr.variable()->accept(*this);
+                output_.stream() << " = ";
+                output_.stream() << "*" << temp << ";\n";
+            }
+            emit_in_contracts(expr);
+            expr.body()->accept(*this);
+            emit_out_contracts(expr);
+            output_.line() << "}\n";
+            if (expr.else_body()) {
+                output_.line() << "if (" << temp << " >= ";
+                expr.condition()->accept(*this);
+                output_.stream() << ".end()) {\n";
+                expr.else_body()->accept(*this);
+                output_.line() << "}\n";
+            }
+            break;
+        }
         case ast::type::category::array_type:
         {
             auto temp = "__i" + std::to_string(std::rand());

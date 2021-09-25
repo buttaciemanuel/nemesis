@@ -73,6 +73,7 @@ namespace nemesis {
         void visit(const ast::array_expression& expr);
         void visit(const ast::array_sized_expression& expr);
         void visit(const ast::parenthesis_expression& expr);
+        void visit(const ast::range_expression& expr);
         void visit(const ast::record_expression& expr);
         void visit(const ast::member_expression& expr);
         void visit(const ast::call_expression& expr);

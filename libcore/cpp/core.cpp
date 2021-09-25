@@ -9,7 +9,7 @@
 // stack table which is thread local
 thread_local static std::stack<__stack_entry> __stack_table;
 // file content table to print stack traces in a pretty way
-static std::unordered_map<std::string, const char*> __sources;
+static std::unordered_map<std::string, std::unique_ptr<char>> __sources;
 // mutex for shared access among threads to sources table in order to be updated with file content when printing errors
 static std::mutex __sources_mutex;
 
@@ -29,7 +29,7 @@ static bool __load_source_file(const char* path)
 
     buffer[size] = 0;
 
-    __sources[std::string(path)] = buffer;
+    __sources[std::string(path)].reset(buffer);
 
     stream.close();
 
@@ -41,7 +41,7 @@ static std::string __get_line_from_source(const char* path, unsigned line, unsig
     if (__sources.count(path) == 0 && !__load_source_file(path)) return {};
 
     int i = 1;                                                                                                            
-    const char* start = __sources[std::string(path)], *end, *old = start;
+    const char* start = __sources[std::string(path)].get(), *end, *old = start;
     constexpr const unsigned offset = 2;                                                                                        
   
     while (*start != '\0' && i < line) {
