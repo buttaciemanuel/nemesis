@@ -41,6 +41,8 @@ namespace nemesis {
                 }
                 // forward function declarations
                 for (auto fndecl : workspace.second->functions) if (!fndecl->generic()) exported.stream() << prototype(fndecl) << ";\n";
+                // forward lambda type declarations
+                for (auto lambda : workspace.second->lambdas) exported.stream() << "struct __lambda" << lambda.second << ";\n";
             }
         }
         // adds exported header file to targets
@@ -64,6 +66,8 @@ namespace nemesis {
                 if (auto typedecl = dynamic_cast<const ast::type_declaration*>(type->declaration())) typedecl->accept(*this);
                 else emit_anonymous_type(type);
             }
+            // lambda type definitions
+            for (auto lambda : workspace.second->lambdas) emit_lambda_type(lambda.first);
             // global variables definitions
             output_.stream() << "/* Variable and constants definitions */\n";
             for (auto valuedecl : workspace.second->globals) valuedecl->accept(*this);
@@ -156,6 +160,19 @@ namespace nemesis {
         } 
         else if (auto fun_type = std::dynamic_pointer_cast<ast::function_type>(type)) {
             std::ostringstream result;
+            // closure/lambda type
+            if (fun_type->is_lambda()) {
+                result << "__lambda<";
+
+                if (types::compatible(types::unit(), fun_type->result())) result << "void";
+                else result << emit(fun_type->result());
+
+                for (unsigned i = 0; i < fun_type->formals().size(); ++i) result << ", " << emit(fun_type->formals().at(i));
+
+                result << ">&";
+
+                return result.str();
+            }
 
             if (types::compatible(types::unit(), fun_type->result())) result << "void";
             else result << emit(fun_type->result());
@@ -221,6 +238,20 @@ namespace nemesis {
         }
         else if (auto fun_type = std::dynamic_pointer_cast<ast::function_type>(type)) {
             std::ostringstream result;
+
+            // closure/lambda type
+            if (fun_type->is_lambda()) {
+                result << "__lambda<";
+
+                if (types::compatible(types::unit(), fun_type->result())) result << "void";
+                else result << emit(fun_type->result());
+
+                for (unsigned i = 0; i < fun_type->formals().size(); ++i) result << ", " << emit(fun_type->formals().at(i));
+
+                result << ">& " << variable;
+
+                return result.str();
+            }
 
             if (types::compatible(types::unit(), fun_type->result())) result << "void";
             else result << emit(fun_type->result());
@@ -431,6 +462,86 @@ namespace nemesis {
                 for (auto contract : function->contracts()) if (!std::static_pointer_cast<ast::contract_statement>(contract)->is_require()) contract->accept(*this);
             }
         }
+    }
+
+    void code_generator::emit_lambda_type(const ast::function_expression* lambda)
+    {
+        struct guard guard(output_);
+        auto fntype = std::dynamic_pointer_cast<ast::function_type>(lambda->annotation().type);
+        std::size_t id = workspace_->lambdas[lambda];
+
+        output_.line() << "struct __lambda" << id << " : __lambda<";
+
+        if (types::compatible(types::unit(), fntype->result())) output_.stream() << "void";
+        else output_.stream() << emit(fntype->result());
+
+        for (auto formal : fntype->formals()) output_.stream() << ", " << emit(formal);
+
+        output_.stream() << "> {\n";
+
+        {
+            struct guard inner(output_);
+            // since lambdas are allocated on heap memory, we need to release them, so a static array of pointers is maintaned
+            output_.line() << "static std::vector<std::unique_ptr<__lambda" << id << ">> __lambdas;\n";
+            // captured variables as references
+            for (auto captured : lambda->captured()) output_.line() << emit(captured->annotation().type) << "& " << captured->name().lexeme() << ";\n";
+            // constructor with captured variables
+            output_.line() << "__lambda" << id << "(";
+            unsigned index = 0;
+            for (auto captured : lambda->captured()) {
+                if (index++ > 0) output_.stream() << ", ";
+                output_.stream() << emit(captured->annotation().type) << "& " << captured->name().lexeme();
+            }
+            output_.stream() << ") : __lambda<";
+            if (types::compatible(types::unit(), fntype->result())) output_.stream() << "void";
+            else output_.stream() << emit(fntype->result());
+            for (auto formal : fntype->formals()) output_.stream() << ", " << emit(formal);
+            output_.stream() << ">()";
+            for (auto captured : lambda->captured()) output_.stream() << ", " << captured->name().lexeme() << "(" << captured->name().lexeme() << ")";
+            output_.stream() << " {}\n";
+            // destructor
+            output_.line() << "~__lambda" << id << "() {}\n";
+            // call function with operator ()
+            if (types::compatible(types::unit(), fntype->result())) output_.line() << "void";
+            else output_.line() << emit(fntype->result());
+            output_.stream() << " operator()(";
+            index = 0;
+            for (auto param : lambda->parameters()) {
+                if (index++ > 0) output_.stream() << ", ";
+                param->accept(*this);
+            }
+            output_.stream() << ") {\n";
+            // stack activation record for stacktrace
+            output_.stream() << "#if __DEVELOPMENT__\n";
+            output_.line() << "__stack_activation_record __record(\"" << lambda->range().filename << "\", \"" << lambda->annotation().type->string() << "\", " << lambda->range().bline << ", " << lambda->range().bcolumn << ");\n";
+            output_.stream() << "#endif\n";
+            lambda->body()->accept(*this);
+            output_.line() << "}\n";
+            // static constructor for returning reference
+            output_.line() << "static __lambda& __new(";
+            index = 0;
+            for (auto captured : lambda->captured()) {
+                if (index++ > 0) output_.stream() << ", ";
+                output_.stream() << emit(captured->annotation().type) << "& " << captured->name().lexeme();
+            }
+            output_.stream() << ") {\n";
+            {
+                struct guard inner(output_);
+                index = 0;
+                output_.line() << "__lambdas.emplace_back(std::make_unique<__lambda" << id << ">(";
+                for (auto captured : lambda->captured()) {
+                    if (index++ > 0) output_.stream() << ", ";
+                    output_.stream() << captured->name().lexeme();
+                }
+                output_.stream() << "));\n";
+                output_.line() << "return *__lambdas.back();\n";
+            }
+            output_.line() << "}\n";
+        }
+
+        output_.line() << "};\n";
+        // instantiate (heap) lambdas vector
+        output_.line() << "std::vector<std::unique_ptr<__lambda" << id << ">> __lambda" << id << "::__lambdas;\n";
     }
     
     std::string code_generator::fullname(const ast::declaration *decl) const
@@ -1836,9 +1947,9 @@ namespace nemesis {
         bool is_function_body = false;
 
         if (auto fn = checker_.scopes().at(&expr)->outscope(environment::kind::function)) {
-            auto body = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->body().get() : static_cast<const ast::property_declaration*>(fn)->body().get();
+            auto body = fn->kind() == ast::kind::function_expression ? static_cast<const ast::function_expression*>(fn)->body().get() : fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->body().get() : static_cast<const ast::property_declaration*>(fn)->body().get();
             is_function_body = &expr == body;
-            auto result_type = std::static_pointer_cast<ast::function_type>(dynamic_cast<const ast::declaration*>(fn)->annotation().type)->result();
+            auto result_type = std::static_pointer_cast<ast::function_type>(fn->kind() == ast::kind::function_expression ? dynamic_cast<const ast::expression*>(fn)->annotation().type : dynamic_cast<const ast::declaration*>(fn)->annotation().type)->result();
             if (is_function_body && !types::compatible(expr.annotation().type, types::unit())) {
                 output_.line() << emit(result_type, "__result") << ";\n";
                 result_vars.push("__result");
@@ -2053,6 +2164,19 @@ namespace nemesis {
             expr.else_body()->accept(*this);
             output_.line() << "}\n";
         }
+    }
+
+    void code_generator::visit(const ast::function_expression& expr)
+    {
+        unsigned index = 0;
+        output_.stream() << "__lambda" << workspace_->lambdas[&expr] << "::__new(";
+        
+        for (auto captured : expr.captured()) {
+            if (index++ > 0) output_.stream() << ", ";
+            output_.stream() << captured->name().lexeme();
+        }
+
+        output_.stream() << ")";
     }
 
     void code_generator::visit(const ast::expression_statement& stmt)

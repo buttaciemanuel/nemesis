@@ -148,7 +148,7 @@ namespace nemesis {
         {
             // C++17 is used as default standard
             // adds builtin file
-            std::string command = "g++ -std=c++17 -lm";
+            std::string command = "g++ -std=c++17 -lm -ggdb3";
             // adds output file if it's an application
             if (package_.kind == package::kind::app) command += " -o application";
             // or just compile if library

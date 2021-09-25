@@ -443,9 +443,9 @@ namespace nemesis {
         return type;
     }
 
-    ast::pointer<ast::function_type> types::function(ast::types formals, ast::pointer<ast::type> result)
+    ast::pointer<ast::function_type> types::function(ast::types formals, ast::pointer<ast::type> result, bool lambda)
     { 
-        auto type = ast::create<ast::function_type>(formals, result);
+        auto type = ast::create<ast::function_type>(formals, result, lambda);
         others_.push_back(type);
         return type;
     }

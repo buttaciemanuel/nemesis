@@ -4,6 +4,7 @@
 #include <complex>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <sstream>
@@ -270,6 +271,13 @@ private:
     }
 
     T numerator_, denominator_; 
+};
+
+template<typename Result, typename... Args>
+struct __lambda {
+    __lambda() = default;
+    virtual ~__lambda() {}
+    virtual Result operator()(Args... args) = 0;
 };
 
 struct __none {};

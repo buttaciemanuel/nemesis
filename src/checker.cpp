@@ -821,6 +821,7 @@ namespace nemesis {
 
     ast::pointer<ast::expression> checker::implicit_cast(ast::pointer<ast::type> type, ast::pointer<ast::expression> expression)
     {
+        if (!type || !expression->annotation().type) return nullptr;
         // assumes types are compatible
         if (type->category() == expression->annotation().type->category() && (type->category() == ast::type::category::integer_type || type->category() == ast::type::category::rational_type || type->category() == ast::type::category::float_type || type->category() == ast::type::category::complex_type)) {
             // implicit cast between numeric types of different sizes or signedness
@@ -888,6 +889,7 @@ namespace nemesis {
 
     ast::pointer<ast::expression> checker::implicit_forced_cast(ast::pointer<ast::type> type, ast::pointer<ast::expression> expression)
     {
+        if (!type || !expression->annotation().type) return nullptr;
         // if strict cast is needed
         if (!types::compatible(type, expression->annotation().type)) {
             auto result = ast::create<ast::implicit_conversion_expression>(expression->range(), expression);
@@ -1937,11 +1939,19 @@ namespace nemesis {
                 // a function expression is not defined as a closure and it's not able
                 // to capture the local environment
                 if (auto fn = expr.annotation().associated->outscope(environment::kind::function)) {
+                    // instantiate lambda type in case
+                    if (auto lambda = dynamic_cast<const ast::function_expression*>(fn)) {
+                        auto workspace = this->workspace();
+                        workspace->lambdas.emplace(lambda, workspace->lambdas.size());
+                    }
                     // get scope of resolved variable name
                     auto varscope = scopes_.at(vardecl->annotation().scope), fnscope = scopes_.at(fn);
                     auto var = dynamic_cast<const ast::var_declaration*>(vardecl);
                     // test if var scope is a local scope and it's an ancestor for function scope
                     if (var && dynamic_cast<const ast::expression*>(varscope->enclosing()) && fnscope->has_ancestor_scope(varscope)) {
+                        // add captured variable inside lambda scope
+                        if (auto lambda = dynamic_cast<const ast::function_expression*>(fn)) lambda->captured().insert(var);
+                        
                         auto diag = diagnostic::builder()
                                     .location(expr.range().begin())
                                     .severity(diagnostic::severity::error)
@@ -1950,8 +1960,8 @@ namespace nemesis {
                                     .note(var->name().range(), diagnostic::format("This is `$` declaration from local scope.", name))
                                     .build();
                         
-                        publisher().publish(diag);
-                        expr.invalid(true);
+                        //publisher().publish(diag);
+                        //expr.invalid(true);
                     }
                 }
                 
@@ -2756,11 +2766,19 @@ namespace nemesis {
                 // a function expression is not defined as a closure and it's not able
                 // to capture the local environment
                 if (auto fn = scope_->outscope(environment::kind::function)) {
+                    // instantiate lambda type in case
+                    if (auto lambda = dynamic_cast<const ast::function_expression*>(fn)) {
+                        auto workspace = this->workspace();
+                        workspace->lambdas.emplace(lambda, workspace->lambdas.size());
+                    }
                     // get scope of resolved variable name
                     auto varscope = scopes_.at(vardecl->annotation().scope), fnscope = scopes_.at(fn);
                     auto var = dynamic_cast<const ast::var_declaration*>(vardecl);
                     // test if var scope is a local scope and it's an ancestor for function scope
                     if (var && dynamic_cast<const ast::expression*>(varscope->enclosing()) && fnscope->has_ancestor_scope(varscope)) {
+                        // add captured variable inside lambda scope
+                        if (auto lambda = dynamic_cast<const ast::function_expression*>(fn)) lambda->captured().insert(var);
+                        
                         auto diag = diagnostic::builder()
                                     .location(expr.range().begin())
                                     .severity(diagnostic::severity::error)
@@ -2769,8 +2787,8 @@ namespace nemesis {
                                     .note(var->name().range(), diagnostic::format("This is `$` declaration from local scope.", name))
                                     .build();
                         
-                        publisher().publish(diag);
-                        expr.invalid(true);
+                        //publisher().publish(diag);
+                        //expr.invalid(true);
                     }
                 }
                 // resolve unresolved variable or constant
@@ -4249,7 +4267,7 @@ namespace nemesis {
 
         auto result_type = expr.return_type_expression() ? expr.return_type_expression()->annotation().type : types::unit();
         // type is annoted before body is checked
-        expr.annotation().type = types::function(formals, result_type);
+        expr.annotation().type = types::function(formals, result_type, true);
 
         if (expr.body())  try { 
             expr.body()->accept(*this); 

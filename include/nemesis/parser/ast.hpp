@@ -3651,6 +3651,10 @@ namespace nemesis {
              * Source range of result type, if any
              */
             source_range& result_range() const { return result_range_; }
+            /**
+             * List of captured variables
+             */
+            std::set<const var_declaration*>& captured() const { return captured_; }
         private:
             /**
              * Funtion parameters
@@ -3668,6 +3672,10 @@ namespace nemesis {
              * Range of result type
              */
             mutable source_range result_range_;
+            /**
+             * List of captured variables
+             */
+            mutable std::set<const var_declaration*> captured_ = {};
         };
         /**
          * Postfix expression, like `i++` or `i--`
@@ -5680,6 +5688,10 @@ namespace nemesis {
              * List of global variables and constants' declarations
              */
             std::vector<const ast::declaration*> globals;
+            /**
+             * List of all function expression used to extract their lambda type so it could be instantiated, mapped to their id in C++
+             */
+            std::unordered_map<const ast::function_expression*, std::size_t> lambdas;
             /**
              * Tells if workspace is builtin
              */

@@ -393,13 +393,13 @@ namespace nemesis {
 
         class function_type : public type {
         public:
-            function_type(types formals, pointer<type> result) : type(), formals_(formals), result_(result) {}
+            function_type(types formals, pointer<type> result, bool lambda = false) : type(), formals_(formals), result_(result), lambda_(lambda) {}
             ~function_type() {}
             const types& formals() const { return formals_; }
             pointer<type> result() const { return result_; }
             std::string string(bool absolute = true) const 
             {
-                std::string str = "function";
+                std::string str = lambda_ ? "lambda" : "function";
                 if (formals_.empty()) str += "()";
                 else {
                     str += '(' + (formals_.front()->mutability ? std::string("mutable ") : std::string()) + formals_.front()->string();
@@ -410,6 +410,7 @@ namespace nemesis {
                 return str;
             }
             enum category category() const { return category::function_type; }
+            bool is_lambda() const { return lambda_; }
             ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
             {
                 types formals;
@@ -432,6 +433,7 @@ namespace nemesis {
         private:
             types formals_;
             pointer<type> result_;
+            bool lambda_;
         };
 
         class structure_type : public type {
@@ -574,7 +576,7 @@ namespace nemesis {
         static ast::pointer<ast::array_type> array(ast::pointer<ast::type> base, unsigned size);
         static ast::pointer<ast::slice_type> slice(ast::pointer<ast::type> base);
         static ast::pointer<ast::pointer_type> pointer(ast::pointer<ast::type> base);
-        static ast::pointer<ast::function_type> function(ast::types formals, ast::pointer<ast::type> result);
+        static ast::pointer<ast::function_type> function(ast::types formals, ast::pointer<ast::type> result, bool lambda = false);
         static ast::pointer<ast::range_type> range(ast::pointer<ast::type> base, bool open);
         static ast::pointer<ast::structure_type> record(ast::structure_type::components fields);
         static ast::pointer<ast::variant_type> variant(ast::types types);

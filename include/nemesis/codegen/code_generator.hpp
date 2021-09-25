@@ -50,6 +50,7 @@ namespace nemesis {
 
         bool emit_if_constant(const ast::expression& expr);
         void emit_anonymous_type(ast::pointer<ast::type> type);
+        void emit_lambda_type(const ast::function_expression* lambda);
         void emit_in_contracts(const ast::node& current);
         void emit_out_contracts(const ast::node& current);
 
@@ -84,6 +85,7 @@ namespace nemesis {
         void visit(const ast::when_expression& expr);
         void visit(const ast::for_loop_expression& expr);
         void visit(const ast::for_range_expression& expr);
+        void visit(const ast::function_expression& expr);
 
         void visit(const ast::expression_statement& stmt);
         void visit(const ast::assignment_statement& stmt);
