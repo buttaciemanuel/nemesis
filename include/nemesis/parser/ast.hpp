@@ -246,6 +246,9 @@ namespace nemesis {
              */
             virtual void accept(visitor& visitor) const = 0;
         };
+
+        class function_declaration;
+
         /**
          * The root class for expressions inside the AST
          */
@@ -317,6 +320,10 @@ namespace nemesis {
                  * Substitution of generic parameters
                  */
                 ast::pointer<struct substitution> substitution = nullptr;
+                /**
+                 * When the expression is translated to some implicit function
+                 */
+                const ast::function_declaration* implicit_procedure = nullptr;
                 /**
                  * Constructs an empty annotation
                  */

@@ -8863,9 +8863,26 @@ namespace nemesis {
         if (auto array_type = std::dynamic_pointer_cast<ast::array_type>(expr.condition()->annotation().type)) expr.variable()->annotation().type = array_type->base();
         else if (auto slice_type = std::dynamic_pointer_cast<ast::slice_type>(expr.condition()->annotation().type)) expr.variable()->annotation().type = slice_type->base();
         else if (auto range_type = std::dynamic_pointer_cast<ast::range_type>(expr.condition()->annotation().type)) expr.variable()->annotation().type = range_type->base();
+        else if (auto iterating_procedure = is_iterable(expr.condition()->annotation().type)) {
+            expr.annotation().implicit_procedure = iterating_procedure;
+            auto iterator_procedure = is_iterator(std::dynamic_pointer_cast<ast::function_type>(iterating_procedure->annotation().type)->result());
+            auto variant_types = std::dynamic_pointer_cast<ast::variant_type>(std::dynamic_pointer_cast<ast::function_type>(iterator_procedure->annotation().type)->result())->types();
+            if (types::compatible(variant_types.front(), scopes_.at(compilation_.workspaces().at("core").get())->type("none")->annotation().type)) expr.variable()->annotation().type = variant_types.back();
+            else expr.variable()->annotation().type = variant_types.front();
+            if (auto implicit = implicit_cast(iterating_procedure->parameters().front()->annotation().type, expr.condition())) expr.condition() = implicit;
+        }
         else {
             expr.invalid(true);
-            report(expr.condition()->range(), diagnostic::format("I need an array, slice or range to iterate through, I found `$` instead, idiot!", expr.condition()->annotation().type->string()));
+            report(expr.condition()->range(), diagnostic::format("Type `$` must implement `iterable` concept to be traversed, idiot!", expr.condition()->annotation().type->string()));
+            auto builder = diagnostic::builder()
+                        .severity(diagnostic::severity::error)
+                        .location(expr.condition()->range().begin())
+                        .message(diagnostic::format("Type `$` must implement `iterable` concept to be traversed, idiot!", expr.condition()->annotation().type->string()))
+                        .note(scopes_.at(compilation_.workspaces().at("core").get())->concept("iterable")->name().range(), "Here you can see declaration of `iterable` concept.")
+                        .note(scopes_.at(compilation_.workspaces().at("core").get())->concept("iterator")->name().range(), "This is declaration of `iterator` concept, instead.")
+                        .highlight(expr.condition()->range());
+
+            publisher().publish(builder.build());
         }
 
         if (expr.body()) {
@@ -9723,7 +9740,7 @@ namespace nemesis {
         }
 
         // for array binding
-        if (decl.annotation().type->category() == ast::type::category::array_type && decl.value() && (decl.value()->kind() == ast::kind::array_expression || decl.value()->kind() == ast::kind::array_sized_expression)) {
+        if (decl.annotation().type && decl.annotation().type->category() == ast::type::category::array_type && decl.value() && (decl.value()->kind() == ast::kind::array_expression || decl.value()->kind() == ast::kind::array_sized_expression)) {
             // remove temporary from stack allocation
             pending_insertions.remove_if([&] (const decltype(pending_insertions)::value_type& t) { return decl.value()->annotation().referencing == std::get<1>(t).get(); });
             // remove reference
@@ -9909,7 +9926,7 @@ namespace nemesis {
         decl.annotation().resolved = true;
 
         // for array binding
-        if (decl.annotation().type->category() == ast::type::category::array_type && decl.value() && (decl.value()->kind() == ast::kind::array_expression || decl.value()->kind() == ast::kind::array_sized_expression)) {
+        if (decl.annotation().type && decl.annotation().type->category() == ast::type::category::array_type && decl.value() && (decl.value()->kind() == ast::kind::array_expression || decl.value()->kind() == ast::kind::array_sized_expression)) {
             // remove temporary from stack allocation
             pending_insertions.remove_if([&] (const decltype(pending_insertions)::value_type& t) { return decl.value()->annotation().referencing == std::get<1>(t).get(); });
             // remove reference
@@ -10762,6 +10779,45 @@ namespace nemesis {
                 auto fdecl = static_cast<const ast::function_declaration*>(fn.second);
                 if (!types::compatible(type, std::static_pointer_cast<ast::function_type>(fdecl->annotation().type)->result())) continue;
                 if (fdecl->generic() || !fdecl->parameters().empty()) continue;
+                return fdecl;
+            }
+        }
+
+        return nullptr;
+    }
+
+    const ast::function_declaration* checker::is_iterable(ast::pointer<ast::type> type) const
+    {
+        if (!types::builtin(type->string()) && type->declaration()) {
+            for (auto fn : scopes_.at(type->declaration())->functions()) {
+                if (fn.first != "walk" || fn.second->kind() != ast::kind::function_declaration) continue;
+                auto fdecl = static_cast<const ast::function_declaration*>(fn.second);
+                if (fdecl->generic() || fdecl->parameters().size() != 1) continue;
+                auto paramdecl = std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().front());
+                if (paramdecl->is_variadic()) continue;
+                if (!types::assignment_compatible(type, paramdecl->annotation().type)) continue;
+                if (!is_iterator(std::static_pointer_cast<ast::function_type>(fdecl->annotation().type)->result())) continue;
+                return fdecl;
+            }
+        }
+
+        return nullptr;
+    }
+
+    const ast::function_declaration* checker::is_iterator(ast::pointer<ast::type> type) const
+    {
+        if (!types::builtin(type->string()) && type->declaration()) {
+            for (auto fn : scopes_.at(type->declaration())->functions()) {
+                if (fn.first != "next" || fn.second->kind() != ast::kind::function_declaration) continue;
+                auto fdecl = static_cast<const ast::function_declaration*>(fn.second);
+                if (fdecl->generic() || fdecl->parameters().size() != 1) continue;
+                auto paramdecl = std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().front());
+                if (paramdecl->is_variadic()) continue;
+                auto mutable_pointer = types::pointer(type);
+                mutable_pointer->mutability = true;
+                if (!types::assignment_compatible(mutable_pointer, paramdecl->annotation().type)) continue;
+                auto result = std::dynamic_pointer_cast<ast::variant_type>(std::static_pointer_cast<ast::function_type>(fdecl->annotation().type)->result());
+                if (!result || result->types().size() != 2 || !result->contains(scopes_.at(compilation_.workspaces().at("core").get())->type("none")->annotation().type)) continue;
                 return fdecl;
             }
         }

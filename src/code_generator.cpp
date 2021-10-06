@@ -2165,6 +2165,30 @@ namespace nemesis {
             output_.stream() << temporary->name().lexeme();
             return;
         }
+
+        // implicit iterator
+        if (auto iterating_procedure = dynamic_cast<const ast::function_declaration*>(expr.annotation().implicit_procedure)) {
+            auto temp = "__i" + std::to_string(std::rand());
+            auto temp2 = "__t" + std::to_string(std::rand());
+            auto iterator_name = emit(iterating_procedure->return_type_expression()->annotation().type);
+            output_.line() << "auto " << temp << " = " << fullname(iterating_procedure) << "(";
+            expr.condition()->accept(*this);
+            output_.stream() << ");\n";
+            output_.line() << "auto " << temp2 << " = " << iterator_name << "_next(&" << temp << ");\n";
+            output_.line() << "for (; " << temp2 << ".__tag != " << std::hash<std::string>()(checker_.scopes().at(checker_.compilation().workspaces().at("core").get())->type("none")->annotation().type->string()) << "u; " << temp2 << " = " << iterator_name << "_next(&" << temp << ")) {\n";
+            {
+                struct guard inner(output_);
+                output_.line() <<  emit(expr.variable()->annotation().type, std::dynamic_pointer_cast<ast::var_declaration>(expr.variable())->name().lexeme().string()) << " = " << temp2 << "._" << std::hash<std::string>()(expr.variable()->annotation().type->string()) << ";\n";
+                expr.body()->accept(*this);
+            }
+            output_.line() << "}\n";
+            if (expr.else_body()) {
+                output_.line() << "if (" << temp2 << ".__tag == " << std::hash<std::string>()(checker_.scopes().at(checker_.compilation().workspaces().at("core").get())->type("none")->annotation().type->string()) << "u) {\n";
+                expr.else_body()->accept(*this);
+                output_.line() << "}\n";
+            }
+            return;
+        }
         
         switch (expr.condition()->annotation().type->category()) {
         case ast::type::category::range_type:

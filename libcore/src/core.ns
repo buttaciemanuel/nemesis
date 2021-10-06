@@ -44,10 +44,10 @@ extend(T) opt(T) {
 
 // this is the concept for iterable object
 concept(T) iterable {
-    function(U) iter(self: T) U
+    function(U) walk(self: T) U
 }
 
 // this is the concept for iterator object
 concept(T) iterator {
-    function(U) next(self: T) opt(U)
+    function(U) next(self: T) U | none
 }

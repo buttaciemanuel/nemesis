@@ -34,7 +34,7 @@ La documentazione ufficiale del linguaggio Nemesis.
 11. [Tipi generici](#generics)
     1. [Nelle funzioni](#generic-function)
     2. [Nei tipi aggregati](#generic-type)
-    3. [Maybe](#maybe)
+    3. [Optional](#optional)
 12. [Concept](#concept)
 13. [Polimorfismo e comportamenti](#polymorphism)
 14. [Contract](#contract)
@@ -934,17 +934,18 @@ Un tipo di dato aggregato, ovvero struct, union e variant, può essere parametri
 
 Risulta possibile scrivere delle specializzazioni, anche parziali, di funzioni e tipi di dato. Tuttavia non è possibile creare un tipo generico di tipo generico, ovvero non è consentito un tipo `A<C>` dove `A` e `C` sono entrambi dei tipi generici.
 
-### Maybe <a name="maybe"></a>
-Il tipo generico `maybe`, definito come variant, permette di incapsulare un dato che potrebbe esistere o meno.
+### Optional <a name="optional"></a>
+Il tipo generico `opt`, definito come variant, permette di incapsulare un dato che potrebbe esistere o meno.
 
-<pre><code>// definizione del tipo parametrico Maybe (contiene il dato o non contiene nulla)
-<b>type</b>(T) maybe <b>is</b> T | none
+<pre><code>// definizione del tipo parametrico Optional (contiene il dato o non contiene nulla)
+<b>type</b> none
+<b>type</b>(T) opt <b>is</b> T | none
 </code></pre>
 
-Il tipo `maybe` è utile per rappresentare dei riferimenti nulli. Questo previene il noto problema del dereferenziare un puntatore nullo. Qui il controllo è necessario sul tipo `maybe` in quanto un riferimento non potrà mai essere nullo in Nemesis.
+Il tipo `opt` è utile per rappresentare dei riferimenti nulli. Questo previene il noto problema del dereferenziare un puntatore nullo. Qui il controllo è necessario sul tipo `opt` in quanto un riferimento non potrà mai essere nullo in Nemesis.
 
 <pre><code>// definizione di un nodo di albero binario con riferimenti a nodi allocati dinamicamente
-<b>type</b>(T) TreeNode(value: T, left: maybe(*T), right: maybe(*T))
+<b>type</b>(T) TreeNode(value: T, left: opt(*T), right: opt(*T))
 
 // estensione con metodi
 <b>extend</b>(T) TreeNode(T) {
@@ -962,22 +963,32 @@ Il tipo `maybe` è utile per rappresentare dei riferimenti nulli. Questo previen
 ## Concept <a name="concept"></a>
 I concept permettono di definire delle restrizioni su un determinato tipo di dato a tempo di compilazione. I concepts, che riprendono il concetto di typeclasses di Haskell, permettono di definire un predicato su un tipo di dato quando questo soddisfa certi vincoli, come implementare delle funzioni o delle proprietà.
 
-<pre><code>// il concept Clone è definito nel seguente modo
-<b>concept</b>(T) Clone {
-    clone(t: T) T
+<pre><code>// il concept clone è definito nel seguente modo
+<b>concept</b>(T) clone {
+    clone(t: T) T;
 }
-// un tipo di dato è Sized se definisce la proprietà `size`
-<b>concept</b>(T) Sized {
+// un tipo di dato è sized se definisce la proprietà `size`
+<b>concept</b>(T) sized {
     .size(t: T) usize
 }
-// il concept Numeric è predicato di tutti i tipi di dato che hanno le seguenti funzionalità
-<b>concept</b>(T) Numeric {
+// il concept numeric è predicato di tutti i tipi di dato che hanno le seguenti funzionalità
+<b>concept</b>(T) numeric {
     // funzione
-    add(x: T, y: T) T
+    add(x: T, y: T) T;
     // funzione
     subtract(x: T, y: T) T;
     // proprietà
-    .abs(t: T) T
+    .abs(t: T) T;
+}
+// concept per sequenza che possa essere attraversata
+<b>concept</b>(T) iterable {
+    // genera iteratore
+    function(Iter) walk(sequence: T) Iter; 
+}
+// concept per iteratore
+<b>concept</b>(T) iterator {
+    // passa al prossimo elemento, se presente
+    function(U) next(mutable iter: *T) U | none;
 }
 </code></pre>
 
