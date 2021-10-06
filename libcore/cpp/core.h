@@ -305,7 +305,12 @@ template<typename T>
 struct __range {
 public:
     constexpr __range() = default;
-    constexpr __range(T min = std::numeric_limits<T>::min(), T max = std::numeric_limits<T>::max()) : min_(min_), max_(max) {}
+    constexpr __range(T min = std::numeric_limits<T>::min(), T max = std::numeric_limits<T>::max()) : min_(min), max_(max) 
+    {
+#if __DEVELOPMENT__
+        if (min > max) __crash(__format("in range minimum value ? is greater than ?, idiot", min, max));
+#endif 
+    }
     constexpr T min() const { return min_; }
     constexpr T max() const { return max_; }
     constexpr __range_iterator<T> begin() const { return __range_iterator<T>(min_); }

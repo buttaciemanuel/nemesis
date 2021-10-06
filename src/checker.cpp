@@ -4330,7 +4330,7 @@ namespace nemesis {
 
         switch (expr.postfix().kind()) {
             case token::kind::plus_plus:
-                if (rtype->category() == ast::type::category::integer_type) {
+                if (rtype->category() == ast::type::category::integer_type || rtype->category() == ast::type::category::pointer_type) {
                     expr.annotation().type = rtype;
                     immutability(expr);
                 }
@@ -4339,7 +4339,7 @@ namespace nemesis {
                                 .location(expr.postfix().location())
                                 .small(true)
                                 .severity(diagnostic::severity::error)
-                                .message(diagnostic::format("Increment operator `++` requires an integer type, I found type `$` instead!", rtype->string()))
+                                .message(diagnostic::format("Increment operator `++` requires an integer or pointer type, I found type `$` instead!", rtype->string()))
                                 .highlight(expr.postfix().range())
                                 .highlight(expr.expression()->range(), diagnostic::highlighter::mode::light)
                                 .build();
@@ -4351,7 +4351,7 @@ namespace nemesis {
                 }
                 break;
             case token::kind::minus_minus:
-                if (rtype->category() == ast::type::category::integer_type) {
+                if (rtype->category() == ast::type::category::integer_type || rtype->category() == ast::type::category::pointer_type) {
                     expr.annotation().type = rtype;
                     immutability(expr);    
                 }
@@ -4360,7 +4360,7 @@ namespace nemesis {
                                 .location(expr.postfix().location())
                                 .small(true)
                                 .severity(diagnostic::severity::error)
-                                .message(diagnostic::format("Decrement operator `--` requires an integer type, I found type `$` instead!", rtype->string()))
+                                .message(diagnostic::format("Decrement operator `--` requires an integer or pointer type, I found type `$` instead!", rtype->string()))
                                 .highlight(expr.postfix().range())
                                 .highlight(expr.expression()->range(), diagnostic::highlighter::mode::light)
                                 .build();
@@ -6498,25 +6498,25 @@ namespace nemesis {
                 }
                 break;
             case token::kind::plus_plus:
-                if (rtype->category() == ast::type::category::integer_type) {
+                if (rtype->category() == ast::type::category::integer_type || rtype->category() == ast::type::category::pointer_type) {
                     expr.annotation().type = rtype;
                     immutability(expr);
                 }
                 else {
                     expr.invalid(true);
                     expr.annotation().type = types::unknown();
-                    error(expr, diagnostic::format("Increment operator `++` requires an integer type, I found type `$` instead!", rtype->string()), "", "expected integer");
+                    error(expr, diagnostic::format("Increment operator `++` requires an integer or pointer type, I found type `$` instead!", rtype->string()), "", "expected integer");
                 }
                 break;
             case token::kind::minus_minus:
-                if (rtype->category() == ast::type::category::integer_type) {
+                if (rtype->category() == ast::type::category::integer_type || rtype->category() == ast::type::category::pointer_type) {
                     expr.annotation().type = rtype;
                     immutability(expr);
                 }
                 else {
                     expr.invalid(true);
                     expr.annotation().type = types::unknown();
-                    error(expr, diagnostic::format("Decrement operator `--` requires an integer type, I found type `$` instead!", rtype->string()), "", "expected integer");
+                    error(expr, diagnostic::format("Decrement operator `--` requires an integer or pointer type, I found type `$` instead!", rtype->string()), "", "expected integer");
                 }
                 break;
             case token::kind::amp:
@@ -7355,6 +7355,7 @@ namespace nemesis {
                     else error(expr, diagnostic::format("Variant `$` does not include `$` among its types so conversion is not possible, idiot!", lefttype->string(), righttype->string()));
                     expr.annotation().type = righttype;
                 }
+                else if (types::assignment_compatible(lefttype, righttype)) expr.annotation().type = righttype;
                 else if (lefttype->category() == ast::type::category::integer_type) {
                     auto ltype = std::dynamic_pointer_cast<ast::integer_type>(lefttype);
                     if (righttype->category() == ast::type::category::integer_type) {
@@ -8631,6 +8632,16 @@ namespace nemesis {
         }
 
         if (exprnode) expr.annotation().type = exprnode->annotation().type;
+
+        // temporary control expression must be instantiated and bound to a variable
+        auto value = ast::create<ast::when_expression>(expr.range(), expr.condition(), expr.branches(), expr.else_body());
+        auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, value);
+        binding->annotation().type = expr.annotation().type;
+        binding->annotation().scope = scope_->enclosing();
+        // later insertion before use
+        pending_insertions.emplace_back(scope_, binding, statement_, false);
+        // referencing
+        expr.annotation().referencing = binding.get();
     }
 
     void checker::visit(const ast::when_pattern_expression& expr)
@@ -8705,6 +8716,16 @@ namespace nemesis {
         }
 
         if (expr.body()->annotation().type) expr.annotation().type = expr.body()->annotation().type;
+
+        // temporary control expression must be instantiated and bound to a variable
+        auto value = ast::create<ast::when_pattern_expression>(expr.range(), expr.condition(), expr.pattern(), expr.body(), expr.else_body());
+        auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, value);
+        binding->annotation().type = expr.annotation().type;
+        binding->annotation().scope = scope_->enclosing();
+        // later insertion before use
+        pending_insertions.emplace_back(scope_, binding, statement_, false);
+        // referencing
+        expr.annotation().referencing = binding.get();
     }
 
     void checker::visit(const ast::when_cast_expression& expr) 
@@ -8818,6 +8839,16 @@ namespace nemesis {
         scope_ = outer;
 
         expr.annotation().type = expr.body()->annotation().type;
+
+        // temporary control expression must be instantiated and bound to a variable
+        auto value = ast::create<ast::when_cast_expression>(expr.range(), expr.condition(), expr.type_expression(), expr.body(), expr.else_body());
+        auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, value);
+        binding->annotation().type = expr.annotation().type;
+        binding->annotation().scope = scope_->enclosing();
+        // later insertion before use
+        pending_insertions.emplace_back(scope_, binding, statement_, false);
+        // referencing
+        expr.annotation().referencing = binding.get();
     }
 
     void checker::visit(const ast::for_range_expression& expr) 
@@ -8885,6 +8916,16 @@ namespace nemesis {
         }
 
         expr.annotation().type = expr.body()->annotation().type;
+
+        // temporary control expression must be instantiated and bound to a variable
+        auto value = ast::create<ast::for_range_expression>(expr.range(), expr.variable(), expr.condition(), expr.body(), expr.else_body(), expr.contracts());
+        auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, value);
+        binding->annotation().type = expr.annotation().type;
+        binding->annotation().scope = scope_->enclosing();
+        // later insertion before use
+        pending_insertions.emplace_back(scope_, binding, statement_, false);
+        // referencing
+        expr.annotation().referencing = binding.get();
     }
 
     void checker::visit(const ast::for_loop_expression& expr) 
@@ -8951,6 +8992,16 @@ namespace nemesis {
         }
 
         expr.annotation().type = expr.body()->annotation().type;
+
+        // temporary control expression must be instantiated and bound to a variable
+        auto value = ast::create<ast::for_loop_expression>(expr.range(), expr.condition(), expr.body(), expr.else_body(), expr.contracts());
+        auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, value);
+        binding->annotation().type = expr.annotation().type;
+        binding->annotation().scope = scope_->enclosing();
+        // later insertion before use
+        pending_insertions.emplace_back(scope_, binding, statement_, false);
+        // referencing
+        expr.annotation().referencing = binding.get();
     }
 
     void checker::visit(const ast::if_expression& expr) 
@@ -8998,6 +9049,16 @@ namespace nemesis {
         }
 
         expr.annotation().type = expr.body()->annotation().type;
+
+        // temporary control expression must be instantiated and bound to a variable
+        auto value = ast::create<ast::if_expression>(expr.range(), expr.condition(), expr.body(), expr.else_body());
+        auto binding = ast::create<ast::var_declaration>(expr.range(), std::vector<token>(), token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("__temp" + std::to_string(rand())).data()).build()).build(), nullptr, value);
+        binding->annotation().type = expr.annotation().type;
+        binding->annotation().scope = scope_->enclosing();
+        // later insertion before use
+        pending_insertions.emplace_back(scope_, binding, statement_, false);
+        // referencing
+        expr.annotation().referencing = binding.get();
     }
 
     void checker::visit(const ast::null_statement& stmt) 
@@ -9013,6 +9074,11 @@ namespace nemesis {
         stmt.annotation().visited = true;
         stmt.expression()->accept(*this);
         stmt.annotation().resolved = true;
+
+        if (stmt.expression()->annotation().referencing && (stmt.expression()->kind() == ast::kind::if_expression || stmt.expression()->kind() == ast::kind::for_loop_expression || stmt.expression()->kind() == ast::kind::for_range_expression || stmt.expression()->kind() == ast::kind::when_cast_expression || stmt.expression()->kind() == ast::kind::when_pattern_expression || stmt.expression()->kind() == ast::kind::if_expression)) {
+            pending_insertions.remove_if([&](const decltype(pending_insertions)::value_type& t) { return stmt.expression()->annotation().referencing == std::get<1>(t).get(); });
+            stmt.expression()->annotation().referencing = nullptr;
+        }
     }
 
     void checker::visit(const ast::assignment_statement& stmt)
@@ -9452,6 +9518,11 @@ namespace nemesis {
         else report(stmt.range(), "You cannot use a `return` statement outside function, dammit!");
 
         stmt.annotation().resolved = true;
+
+        if (stmt.expression() && stmt.expression()->annotation().referencing && (stmt.expression()->kind() == ast::kind::if_expression || stmt.expression()->kind() == ast::kind::for_loop_expression || stmt.expression()->kind() == ast::kind::for_range_expression || stmt.expression()->kind() == ast::kind::when_cast_expression || stmt.expression()->kind() == ast::kind::when_pattern_expression || stmt.expression()->kind() == ast::kind::if_expression)) {
+            pending_insertions.remove_if([&](const decltype(pending_insertions)::value_type& t) { return stmt.expression()->annotation().referencing == std::get<1>(t).get(); });
+            stmt.expression()->annotation().referencing = nullptr;
+        }
     }
 
     void checker::visit(const ast::break_statement& stmt)
@@ -9466,7 +9537,7 @@ namespace nemesis {
             
             if (auto range = dynamic_cast<const ast::for_range_expression*>(decl)) {
                 if (range->body()) {
-                    if (range->body()->annotation().type) expected = range->body()->annotation().type;
+                    if (range->body()->annotation().type && range->body()->annotation().type->category() != ast::type::category::unknown_type) expected = range->body()->annotation().type;
                     else {
                         range->body()->annotation().type = stmt.expression()->annotation().type;
                         std::static_pointer_cast<ast::block_expression>(range->body())->exprnode() = &stmt;
@@ -9487,14 +9558,14 @@ namespace nemesis {
             }
             else if (auto loop = dynamic_cast<const ast::for_loop_expression*>(decl)) {
                 if (loop->body()) {
-                    if (loop->body()->annotation().type) expected = loop->body()->annotation().type;
+                    if (loop->body()->annotation().type && loop->body()->annotation().type->category() != ast::type::category::unknown_type) expected = loop->body()->annotation().type;
                     else {
                         loop->body()->annotation().type = stmt.expression()->annotation().type;
                         std::static_pointer_cast<ast::block_expression>(loop->body())->exprnode() = &stmt;
                     }
                 }
 
-                if (expected && expected && expected->category() != ast::type::category::unknown_type &&
+                if (expected && expected->category() != ast::type::category::unknown_type &&
                     stmt.expression()->annotation().type->category() != ast::type::category::unknown_type &&
                     !types::compatible(expected, stmt.expression()->annotation().type)) {
                     auto builder = diagnostic::builder()
@@ -9510,6 +9581,11 @@ namespace nemesis {
         else report(stmt.range(), "You cannot use a `break` statement outside loop, dammit!");
 
         stmt.annotation().resolved = true;
+
+        if (stmt.expression() && stmt.expression()->annotation().referencing && (stmt.expression()->kind() == ast::kind::if_expression || stmt.expression()->kind() == ast::kind::for_loop_expression || stmt.expression()->kind() == ast::kind::for_range_expression || stmt.expression()->kind() == ast::kind::when_cast_expression || stmt.expression()->kind() == ast::kind::when_pattern_expression || stmt.expression()->kind() == ast::kind::if_expression)) {
+            pending_insertions.remove_if([&](const decltype(pending_insertions)::value_type& t) { return stmt.expression()->annotation().referencing == std::get<1>(t).get(); });
+            stmt.expression()->annotation().referencing = nullptr;
+        }
     }
 
     void checker::visit(const ast::continue_statement& stmt) 
@@ -9659,6 +9735,11 @@ namespace nemesis {
         else decl.annotation().type = types::unknown();
         // recorded as global
         if (auto workspace = dynamic_cast<const ast::workspace*>(scope_->enclosing())) const_cast<ast::workspace*>(workspace)->globals.push_back(&decl);
+
+        if (decl.value() && decl.value()->annotation().referencing && (decl.value()->kind() == ast::kind::if_expression || decl.value()->kind() == ast::kind::for_loop_expression || decl.value()->kind() == ast::kind::for_range_expression || decl.value()->kind() == ast::kind::when_cast_expression || decl.value()->kind() == ast::kind::when_pattern_expression || decl.value()->kind() == ast::kind::if_expression)) {
+            pending_insertions.remove_if([&](const decltype(pending_insertions)::value_type& t) { return decl.value()->annotation().referencing == std::get<1>(t).get(); });
+            decl.value()->annotation().referencing = nullptr;
+        }
     }
 
     void checker::visit(const ast::var_tupled_declaration& decl)
@@ -9832,6 +9913,11 @@ namespace nemesis {
             // remove temporary from stack allocation
             pending_insertions.remove_if([&] (const decltype(pending_insertions)::value_type& t) { return decl.value()->annotation().referencing == std::get<1>(t).get(); });
             // remove reference
+            decl.value()->annotation().referencing = nullptr;
+        }
+
+        if (decl.value() && decl.value()->annotation().referencing && (decl.value()->kind() == ast::kind::if_expression || decl.value()->kind() == ast::kind::for_loop_expression || decl.value()->kind() == ast::kind::for_range_expression || decl.value()->kind() == ast::kind::when_cast_expression || decl.value()->kind() == ast::kind::when_pattern_expression || decl.value()->kind() == ast::kind::if_expression)) {
+            pending_insertions.remove_if([&](const decltype(pending_insertions)::value_type& t) { return decl.value()->annotation().referencing == std::get<1>(t).get(); });
             decl.value()->annotation().referencing = nullptr;
         }
     }

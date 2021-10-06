@@ -91,6 +91,8 @@ namespace nemesis {
         void visit(const ast::expression_statement& stmt);
         void visit(const ast::assignment_statement& stmt);
         void visit(const ast::return_statement& stmt);
+        void visit(const ast::break_statement& stmt);
+        void visit(const ast::continue_statement& stmt);
         void visit(const ast::contract_statement& stmt);
 
         void visit(const ast::parameter_declaration& decl);
@@ -110,6 +112,10 @@ namespace nemesis {
          * Semantic checker contains all information produced by previous analysis
          */
         checker& checker_;
+        /**
+         * Pass of generator to split declaration and definition
+         */
+        enum class pass { declare, define } pass_;
         /**
          * Current workspace, used to generate name of current compilation unit for name mangling
          */

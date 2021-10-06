@@ -8,7 +8,7 @@
 #include "nemesis/analysis/evaluator.hpp"
 
 namespace nemesis {
-    code_generator::code_generator(checker& checker) : checker_(checker) {}
+    code_generator::code_generator(checker& checker) : checker_(checker), pass_(pass::declare) {}
 
     code_generator::~code_generator() {}
     
@@ -60,8 +60,16 @@ namespace nemesis {
             output_ = filestream(target);
             // include public header
             output_.stream() << "#include \"__exported.h\"\n";
-            // emits all type declarations inside each file
+            // emits all type declarations with method declarations inside each file
             output_.stream() << "/* Type definitions */\n";
+            pass_ = pass::declare;
+            for (auto type : workspace.second->types) {
+                if (auto typedecl = dynamic_cast<const ast::type_declaration*>(type->declaration())) typedecl->accept(*this);
+                else emit_anonymous_type(type);
+            }
+            // emits all methods definitions
+            output_.stream() << "/* Methods definitions */\n";
+            pass_ = pass::define;
             for (auto type : workspace.second->types) {
                 if (auto typedecl = dynamic_cast<const ast::type_declaration*>(type->declaration())) typedecl->accept(*this);
                 else emit_anonymous_type(type);
@@ -348,47 +356,67 @@ namespace nemesis {
         struct guard guard(output_);
 
         if (auto tuple_type = std::dynamic_pointer_cast<ast::tuple_type>(type)) {
-            output_.line() << "struct " << emit(type) << " {\n";
-            
-            {
-                struct guard inner(output_);
-                for (unsigned int i = 0; i < tuple_type->components().size(); ++i) output_.line() << emit(tuple_type->components().at(i), "_" + std::to_string(i));
-            }
-
-            output_.line() << "};\n";
-        }
-        else if (auto structure_type = std::dynamic_pointer_cast<ast::structure_type>(type)) {
-            output_.line() << "struct " << emit(type) << " {\n";
-            
-            {
-                struct guard inner(output_);
-                for (auto field : structure_type->fields()) output_.line() << emit(field.type, field.name);
-            }
-
-            output_.line() << "};\n";
-        }
-        else if (auto variant_type = std::dynamic_pointer_cast<ast::variant_type>(type)) {
-            output_.line() << "struct " << emit(type) << " {\n";
-
-            {
-                struct guard inner(output_);
-                // tag field is used to identify current type
-                output_.line() << "std::size_t __tag;\n";
-                // for each subtype there exists a field whose name is the hash of type name inside an anonymous union (no duplicate types!!)
-                output_.line() << "union {\n";
+            if (pass_ == pass::declare) {
+                output_.line() << "struct " << emit(type) << " {\n";
                 
                 {
                     struct guard inner(output_);
-                    // each field name is the hash of its type (unique within a variant)
-                    for (auto subtype : variant_type->types()) {
-                        output_.line() << emit(subtype, "_" + std::to_string(std::hash<std::string>()(subtype->string()))) << ";\n";
-                    }
+                    for (unsigned int i = 0; i < tuple_type->components().size(); ++i) output_.line() << emit(tuple_type->components().at(i), "_" + std::to_string(i));
                 }
-                
+
                 output_.line() << "};\n";
+            }
+        }
+        else if (auto structure_type = std::dynamic_pointer_cast<ast::structure_type>(type)) {
+            if (pass_ == pass::declare) {
+                output_.line() << "struct " << emit(type) << " {\n";
+                
+                {
+                    struct guard inner(output_);
+                    for (auto field : structure_type->fields()) output_.line() << emit(field.type, field.name);
+                }
+
+                output_.line() << "};\n";
+            }
+        }
+        else if (auto variant_type = std::dynamic_pointer_cast<ast::variant_type>(type)) {
+            if (pass_ == pass::declare) {
+                output_.line() << "struct " << emit(type) << " {\n";
+
+                {
+                    struct guard inner(output_);
+                    // tag field is used to identify current type
+                    output_.line() << "std::size_t __tag;\n";
+                    // for each subtype there exists a field whose name is the hash of type name inside an anonymous union (no duplicate types!!)
+                    output_.line() << "union {\n";
+                    
+                    {
+                        struct guard inner(output_);
+                        // each field name is the hash of its type (unique within a variant)
+                        for (auto subtype : variant_type->types()) {
+                            output_.line() << emit(subtype, "_" + std::to_string(std::hash<std::string>()(subtype->string()))) << ";\n";
+                        }
+                    }
+                    
+                    output_.line() << "};\n";
+                    // constructor, copy-constructor and destructor are defined for non-trivial members of the union
+                    output_.line() << emit(type) << "();";
+                    output_.line() << emit(type) << "(const " << emit(type) << "& other);\n";
+                    output_.line() << "~" << emit(type) << "();\n";
+                }
+
+                output_.line() << "};\n";
+                // create designated initializers for each variant type
+                for (auto subtype : variant_type->types()) {
+                    auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
+                    // first emits constructors for variant using each of its types
+                    output_.line() << emit(type) << " " << emit(type) << "_init_" << hash << "(" << emit(subtype, "init") << ");\n";
+                }    
+            }
+            else {
                 // constructor, copy-constructor and destructor are defined for non-trivial members of the union
-                output_.line() << emit(type) << "() {}\n";
-                output_.line() << emit(type) << "(const " << emit(type) << "& other) : __tag(other.__tag) {\n";
+                output_.line() << emit(type) << "::" << emit(type) << "() {}\n";
+                output_.line() << emit(type) << "::" << emit(type) << "(const " << emit(type) << "& other) : __tag(other.__tag) {\n";
                 {
                     struct guard inner(output_);
                     output_.line() << "switch (other.__tag) {\n";
@@ -400,38 +428,35 @@ namespace nemesis {
                     output_.line() << "}\n";
                 }
                 output_.line() << "}\n";
-                output_.line() << "~" << emit(type) << "() {}\n";
-            }
+                output_.line() << emit(type) << "::~" << emit(type) << "() {}\n";
+                // create designated initializers for each variant type
+                for (auto subtype : variant_type->types()) {
+                    auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
+                    
+                    // first emits constructors for variant using each of its types
+                    output_.line() << emit(type) << " " << emit(type) << "_init_" << hash << "(" << emit(subtype, "init") << ") {\n";
+                    
+                    {
+                        struct guard inner(output_);
+                        output_.line() << emit(type, "result") << ";\n";
+                        output_.line() << "result.__tag = " << hash << "ull;\n";
+                        output_.line() << "result._" << hash << " = init;\n";
+                        output_.line() << "return result;\n";
+                    }
 
-            output_.line() << "};\n";
+                    output_.line() << "}\n";
 
-            // create designated initializers for each variant type
-            for (auto subtype : variant_type->types()) {
-                auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
-                
-                // first emits constructors for variant using each of its types
-                output_.line() << emit(type) << " " << emit(type) << "_init_" << hash << "(" << emit(subtype, "init") << ") {\n";
-                
-                {
-                    struct guard inner(output_);
-                    output_.line() << emit(type, "result") << ";\n";
-                    output_.line() << "result.__tag = " << hash << "ull;\n";
-                    output_.line() << "result._" << hash << " = init;\n";
-                    output_.line() << "return result;\n";
+                    // then emits explicit conversions to each of its types
+                    output_.line() << emit(subtype) << " " << emit(type) << "_as_" << hash << "(" << emit(type, "self") << ", const char* file, int line, int column) {\n";
+                    
+                    {
+                        struct guard inner(output_);
+                        output_.line() << "if (self.__tag != " << hash << "ull) __crash(\"damn, you cannot explictly convert variant since it has a different run-time type!\", file, line, column);\n";
+                        output_.line() << "return self._" << hash << "; \n";
+                    }
+
+                    output_.line() << "}\n";
                 }
-
-                output_.line() << "}\n";
-
-                // then emits explicit conversions to each of its types
-                output_.line() << emit(subtype) << " " << emit(type) << "_as_" << hash << "(" << emit(type, "self") << ", const char* file, int line, int column) {\n";
-                
-                {
-                    struct guard inner(output_);
-                    output_.line() << "if (self.__tag != " << hash << "ull) __crash(\"damn, you cannot explictly convert variant since it has a different run-time type!\", file, line, column);\n";
-                    output_.line() << "return self._" << hash << "; \n";
-                }
-
-                output_.line() << "}\n";
             }
         }
         else throw std::invalid_argument("code_generator::emit_anonymous_type(): invalid type " + type->string());
@@ -686,81 +711,98 @@ namespace nemesis {
     {
         if (decl.generic()) return;
 
-        // its virtual table type as a structure
-        {
-            guard guard(output_);
-
-            output_.line() << "struct __vtable_" << fullname(&decl) << " {\n";
-            
+        if (pass_ == pass::declare) {
+            // its virtual table type as a structure
             {
-                struct guard inner(output_);
-                // hash of the dynamic type holding this vtable
-                output_.line() << "std::size_t __dyntype;\n";
-                // offset size to determine at which distance (in bytes) the base object (of behavioural type) begins
-                output_.line() << "std::size_t __offset;\n";
-            }
+                guard guard(output_);
 
-            for (auto prototype : decl.declarations()) {
-                struct guard inner(output_);
-                // function pointers to virtual methods
-                if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.line() << "void (*" << function->name().lexeme() << ")(void*);\n";
-                else if (auto property = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.line() << "void (*" << property->name().lexeme() << ")(void*);\n";
-            }
-
-            output_.line() << "};\n";
-        }
-        // then base type is emitted for upcasting and downcasting (it contains pointer to virtual table)
-        {
-            guard guard(output_);
-
-            output_.line() << prototype(&decl) << " {\n";
-
-            {
-                struct guard inner(output_);
+                output_.line() << "struct __vtable_" << fullname(&decl) << " {\n";
                 
-                output_.line() << "__vtable_" << fullname(&decl) << "* __vptr_" << fullname(&decl) << ";\n";
-            }
+                {
+                    struct guard inner(output_);
+                    // hash of the dynamic type holding this vtable
+                    output_.line() << "std::size_t __dyntype;\n";
+                    // offset size to determine at which distance (in bytes) the base object (of behavioural type) begins
+                    output_.line() << "std::size_t __offset;\n";
+                }
 
-            output_.line() << "};\n";
-        }
-        // now emits dispatcher functions which will call directly virtual table functions
-        for (auto proto : decl.declarations()) {
-            if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(proto)) {
-                auto self = std::static_pointer_cast<ast::parameter_declaration>(function->parameters().front())->name().lexeme();
-                output_.line() << "inline " << prototype(function.get()) << " { return ((" << emit(function->annotation().type) << ") " << self << "->__vptr_" << fullname(&decl) << "->" << function->name().lexeme() << ")(";
-                // first argument is object whose real address is computed by using the offset in its virtual table associated to current behaviour
-                output_.stream() << "(" << emit(function->parameters().front()->annotation().type) << ") ((char*) " << self << " - " << self << "->__vptr_" << fullname(&decl) << "->__offset)";
-                for (unsigned i = 1; i < function->parameters().size(); ++i) {
-                    output_.stream() << ", " << std::static_pointer_cast<ast::parameter_declaration>(function->parameters().at(i))->name().lexeme();
+                for (auto prototype : decl.declarations()) {
+                    struct guard inner(output_);
+                    // function pointers to virtual methods
+                    if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.line() << "void (*" << function->name().lexeme() << ")(void*);\n";
+                    else if (auto property = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.line() << "void (*" << property->name().lexeme() << ")(void*);\n";
                 }
-                output_.stream() << "); }\n";
+
+                output_.line() << "};\n";
             }
-            else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(proto)) {
-                auto self = std::static_pointer_cast<ast::parameter_declaration>(function->parameters().front())->name().lexeme();
-                output_.line() << "inline " << prototype(function.get()) << " { return ((" << emit(function->annotation().type) << ") " << self << "->__vptr_" << fullname(&decl) << "->" << function->name().lexeme() << ")(";
-                // first argument is object whose real address is computed by using the offset in its virtual table associated to current behaviour
-                output_.stream() << "(" << emit(function->parameters().front()->annotation().type) << ") ((char*) " << self << " - " << self << "->__vptr_" << fullname(&decl) << "->__offset)";
-                for (unsigned i = 1; i < function->parameters().size(); ++i) {
-                    output_.stream() << ", " << std::static_pointer_cast<ast::parameter_declaration>(function->parameters().at(i))->name().lexeme();
+            // then base type is emitted for upcasting and downcasting (it contains pointer to virtual table)
+            {
+                guard guard(output_);
+
+                output_.line() << prototype(&decl) << " {\n";
+
+                {
+                    struct guard inner(output_);
+                    
+                    output_.line() << "__vtable_" << fullname(&decl) << "* __vptr_" << fullname(&decl) << ";\n";
                 }
-                output_.stream() << "); }\n";
+
+                output_.line() << "};\n";
             }
-        }
-        // dynamic cast function
-        {
-            struct guard inner(output_);
-            // behaviour name
-            auto bname = fullname(&decl);
-            // now emits generic downcast function which will check the dynamic type
-            output_.line() << "template<typename DynType> DynType* __dyncast_" << bname << "(" << bname << "* base, std::size_t dyntype, const char* file, unsigned line, unsigned col) {\n";
+            // now emits dispatcher functions which will call directly virtual table functions
+            for (auto proto : decl.declarations()) {
+                if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(proto)) output_.line() << "inline " << prototype(function.get()) << ";\n";
+                else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(proto)) output_.line() << "inline " << prototype(function.get()) << ";\n";
+            }
+            // dynamic cast function
             {
                 struct guard inner(output_);
-                // if dynamic type does not match, then error
-                output_.line() << "if (dyntype != base->__vptr_" << bname << "->__dyntype) __crash(\"downcast failed because cast type does not match real type of " << bname << ", c*nt.\", file, line, col);\n";
-                // return downcasted type
-                output_.line() << "return (DynType*) ((char*) base - base->__vptr_" << bname << "->__offset);\n";
+                // behaviour name
+                auto bname = fullname(&decl);
+                // now emits generic downcast function which will check the dynamic type
+                output_.line() << "template<typename DynType> DynType* __dyncast_" << bname << "(" << bname << "* base, std::size_t dyntype, const char* file, unsigned line, unsigned col);\n";
             }
-            output_.line() << "}\n";
+        }
+        else {
+            // now emits dispatcher functions which will call directly virtual table functions
+            for (auto proto : decl.declarations()) {
+                if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(proto)) {
+                    auto self = std::static_pointer_cast<ast::parameter_declaration>(function->parameters().front())->name().lexeme();
+                    output_.line() << "inline " << prototype(function.get()) << " { return ((" << emit(function->annotation().type) << ") " << self << "->__vptr_" << fullname(&decl) << "->" << function->name().lexeme() << ")(";
+                    // first argument is object whose real address is computed by using the offset in its virtual table associated to current behaviour
+                    output_.stream() << "(" << emit(function->parameters().front()->annotation().type) << ") ((char*) " << self << " - " << self << "->__vptr_" << fullname(&decl) << "->__offset)";
+                    for (unsigned i = 1; i < function->parameters().size(); ++i) {
+                        output_.stream() << ", " << std::static_pointer_cast<ast::parameter_declaration>(function->parameters().at(i))->name().lexeme();
+                    }
+                    output_.stream() << "); }\n";
+                }
+                else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(proto)) {
+                    auto self = std::static_pointer_cast<ast::parameter_declaration>(function->parameters().front())->name().lexeme();
+                    output_.line() << "inline " << prototype(function.get()) << " { return ((" << emit(function->annotation().type) << ") " << self << "->__vptr_" << fullname(&decl) << "->" << function->name().lexeme() << ")(";
+                    // first argument is object whose real address is computed by using the offset in its virtual table associated to current behaviour
+                    output_.stream() << "(" << emit(function->parameters().front()->annotation().type) << ") ((char*) " << self << " - " << self << "->__vptr_" << fullname(&decl) << "->__offset)";
+                    for (unsigned i = 1; i < function->parameters().size(); ++i) {
+                        output_.stream() << ", " << std::static_pointer_cast<ast::parameter_declaration>(function->parameters().at(i))->name().lexeme();
+                    }
+                    output_.stream() << "); }\n";
+                }
+            }
+            // dynamic cast function
+            {
+                struct guard inner(output_);
+                // behaviour name
+                auto bname = fullname(&decl);
+                // now emits generic downcast function which will check the dynamic type
+                output_.line() << "template<typename DynType> DynType* __dyncast_" << bname << "(" << bname << "* base, std::size_t dyntype, const char* file, unsigned line, unsigned col) {\n";
+                {
+                    struct guard inner(output_);
+                    // if dynamic type does not match, then error
+                    output_.line() << "if (dyntype != base->__vptr_" << bname << "->__dyntype) __crash(\"downcast failed because cast type does not match real type of " << bname << ", c*nt.\", file, line, col);\n";
+                    // return downcasted type
+                    output_.line() << "return (DynType*) ((char*) base - base->__vptr_" << bname << "->__offset);\n";
+                }
+                output_.line() << "}\n";
+            }
         }
     }
     
@@ -772,11 +814,113 @@ namespace nemesis {
 
         auto range_type = std::dynamic_pointer_cast<ast::range_type>(decl.annotation().type);
 
-        {
-            guard guard(output_);
-            output_.line() << prototype(&decl) << " {\n";
+        if (pass_ == pass::declare) {
+            {
+                guard guard(output_);
+                output_.line() << prototype(&decl) << " {\n";
+                {
+                    struct guard inner(output_);
+                    // first emits vpointers if any
+                    if (types::implementors().count(decl.annotation().type)) {
+                        struct guard inner(output_);
+
+                        for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                            auto bname = fullname(behaviour->declaration());
+                            output_.line() << "__vtable_" << bname << "* __vptr_" << bname << ";\n";
+                        }
+                    }
+                    // then fields
+                    output_.line() << emit(range_type->base(), "__value") << ";\n";
+                    // default constructor
+                    output_.line() << emit(decl.annotation().type) << "() = default;\n";
+                    // value constructor
+                    output_.line() << emit(decl.annotation().type) << "(" << emit(range_type->base(), "value") << ", const char* file, int line, int column);\n";
+                }
+                output_.line() << "};\n";
+            }
+
+            if (checker_.scopes().count(&decl)) {
+                for (auto function : checker_.scopes().at(&decl)->functions()) {
+                    if (auto fdecl = dynamic_cast<const ast::function_declaration*>(function.second)) { if (!fdecl->generic()) output_.stream() << prototype(fdecl) << ";\n"; }
+                    else if (auto fdecl = dynamic_cast<const ast::property_declaration*>(function.second)) output_.stream() << prototype(fdecl) << ";\n";
+                }
+            }
+        }
+        else {
+            if (checker_.scopes().count(&decl)) {
+                for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
+                for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
+            }
+
+            // emit vtables for this type
+            if (types::implementors().count(decl.annotation().type)) {
+                struct guard inner(output_);
+
+                for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                    auto bname = fullname(behaviour->declaration());
+                    output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
+                    // set dynamic type of this vptr inside structure
+                    output_.stream() << std::hash<std::string>()(decl.annotation().type->string()) << "ull, ";
+                    // set offset of this vptr inside structure
+                    output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
+                    // fill vtable with function pointers
+                    for (auto prototype : static_cast<const ast::behaviour_declaration*>(behaviour->declaration())->declarations()) {
+                        output_.stream() << ", ";
+                        if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                        else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                    }
+                    output_.stream() << " };\n";
+                }
+            }
+
+            // emit constructor initializing virtual pointers eventually
             {
                 struct guard inner(output_);
+                unsigned ifield = 0;
+                output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "(" << emit(range_type->base(), "value") << ", const char* file, int line, int column) : ";
+                ifield = 0;
+                // initialize vpointers
+                if (types::implementors().count(decl.annotation().type)) {
+                    for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                        auto bname = fullname(behaviour->declaration());
+                        if (ifield > 0) output_.stream() << ", ";
+                        output_.stream() << "__vptr_" << bname << "(&__vtable_" << bname << "_for_" << emit(decl.annotation().type) << ")";
+                        ++ifield;
+                    }
+                }
+                // initialize value field
+                if (ifield > 0) output_.stream() << ", ";
+                output_.stream() << "__value(value)";
+                output_.stream() << " {\n";
+                // checked control on value
+                output_.line() << "#if __DEVELOPMENT__\n";
+                {
+                    struct guard inner(output_);
+                    auto range = std::dynamic_pointer_cast<ast::range_expression>(decl.constraint());
+                    output_.line() << "__assert(";
+                    if (range->start()) output_.stream() << "value >= " << emit(range->start()->annotation().value);
+                    if (range->end()) {
+                        if (range->start()) output_.stream() << " && ";
+                        if (range->is_inclusive()) output_.stream() << "value <= " << emit(range->end()->annotation().value);
+                        else output_.stream() << "value < " << emit(range->end()->annotation().value);
+                    }
+                    output_.stream() << ", __format(\"range value ? is out of bounds for type " << decl.annotation().type->string() << "!\", value), file, line, column);\n";
+                }
+                output_.line() << "#endif\n";
+                output_.line() << "}\n";
+            }
+        }
+    }
+    
+    void code_generator::visit(const ast::record_declaration& decl)
+    {
+        if (decl.generic()) return;
+
+        if (pass_ == pass::declare) {    
+            {
+                guard guard(output_);
+
+                output_.line() << prototype(&decl) << " {\n";
                 // first emits vpointers if any
                 if (types::implementors().count(decl.annotation().type)) {
                     struct guard inner(output_);
@@ -787,171 +931,89 @@ namespace nemesis {
                     }
                 }
                 // then fields
-                output_.line() << emit(range_type->base(), "__value") << ";\n";
-                // default constructor
-                output_.line() << emit(decl.annotation().type) << "() = default;\n";
-                // value constructor
-                output_.line() << emit(decl.annotation().type) << "(" << emit(range_type->base(), "value") << ", const char* file, int line, int column);\n";
-            }
-            output_.line() << "};\n";
-        }
-
-        if (checker_.scopes().count(&decl)) {
-            for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
-            for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
-        }
-
-        // emit vtables for this type
-        if (types::implementors().count(decl.annotation().type)) {
-            struct guard inner(output_);
-
-            for (auto behaviour : types::implementors().at(decl.annotation().type)) {
-                auto bname = fullname(behaviour->declaration());
-                output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
-                // set dynamic type of this vptr inside structure
-                output_.stream() << std::hash<std::string>()(decl.annotation().type->string()) << "ull, ";
-                // set offset of this vptr inside structure
-                output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
-                // fill vtable with function pointers
-                for (auto prototype : static_cast<const ast::behaviour_declaration*>(behaviour->declaration())->declarations()) {
-                    output_.stream() << ", ";
-                    if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
-                    else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                for (auto field : decl.fields()) field->accept(*this);
+                // constructors
+                {
+                    struct guard inner(output_);
+                    // default constructor
+                    output_.line() << emit(decl.annotation().type) << "() = default;\n";
+                    // constructor with fields
+                    unsigned ifield = 0;
+                    output_.line() << emit(decl.annotation().type) << "(";
+                    for (auto field : decl.fields()) {
+                        if (ifield > 0) output_.stream() << ", "; 
+                        output_.stream() << emit(field->annotation().type, std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string());
+                        ++ifield;
+                    }
+                    output_.stream() << ");\n";
                 }
-                output_.stream() << " };\n";
+                output_.line() << "};\n";
             }
-        }
 
-        // emit constructor initializing virtual pointers eventually
-        {
-            struct guard inner(output_);
-            unsigned ifield = 0;
-            output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "(" << emit(range_type->base(), "value") << ", const char* file, int line, int column) : ";
-            ifield = 0;
-            // initialize vpointers
-            if (types::implementors().count(decl.annotation().type)) {
-                for (auto behaviour : types::implementors().at(decl.annotation().type)) {
-                    auto bname = fullname(behaviour->declaration());
-                    if (ifield > 0) output_.stream() << ", ";
-                    output_.stream() << "__vptr_" << bname << "(&__vtable_" << bname << "_for_" << emit(decl.annotation().type) << ")";
-                    ++ifield;
+            if (checker_.scopes().count(&decl)) {
+                for (auto function : checker_.scopes().at(&decl)->functions()) {
+                    if (auto fdecl = dynamic_cast<const ast::function_declaration*>(function.second)) { if (!fdecl->generic()) output_.stream() << prototype(fdecl) << ";\n"; }
+                    else if (auto fdecl = dynamic_cast<const ast::property_declaration*>(function.second)) output_.stream() << prototype(fdecl) << ";\n";
                 }
             }
-            // initialize value field
-            if (ifield > 0) output_.stream() << ", ";
-            output_.stream() << "__value(value)";
-            output_.stream() << " {\n";
-            // checked control on value
-            output_.line() << "#if __DEVELOPMENT__\n";
-            {
-                struct guard inner(output_);
-                auto range = std::dynamic_pointer_cast<ast::range_expression>(decl.constraint());
-                output_.line() << "__assert(";
-                if (range->start()) output_.stream() << "value >= " << emit(range->start()->annotation().value);
-                if (range->end()) {
-                    if (range->start()) output_.stream() << " && ";
-                    if (range->is_inclusive()) output_.stream() << "value <= " << emit(range->end()->annotation().value);
-                    else output_.stream() << "value < " << emit(range->end()->annotation().value);
-                }
-                output_.stream() << ", __format(\"range value ? is out of bounds for type " << decl.annotation().type->string() << "!\", value), file, line, column);\n";
-            }
-            output_.line() << "#endif\n";
-            output_.line() << "}\n";
         }
-    }
-    
-    void code_generator::visit(const ast::record_declaration& decl)
-    {
-        if (decl.generic()) return;
+        else {    
+            if (checker_.scopes().count(&decl)) {
+                for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
+                for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
+            }
 
-        {
-            guard guard(output_);
-
-            output_.line() << prototype(&decl) << " {\n";
-            // first emits vpointers if any
+            // emit vtables for this type
             if (types::implementors().count(decl.annotation().type)) {
                 struct guard inner(output_);
 
                 for (auto behaviour : types::implementors().at(decl.annotation().type)) {
                     auto bname = fullname(behaviour->declaration());
-                    output_.line() << "__vtable_" << bname << "* __vptr_" << bname << ";\n";
+                    output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
+                    // set dynamic type of this vptr inside structure
+                    output_.stream() << std::hash<std::string>()(decl.annotation().type->string()) << "ull, ";
+                    // set offset of this vptr inside structure
+                    output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
+                    // fill vtable with function pointers
+                    for (auto prototype : static_cast<const ast::behaviour_declaration*>(behaviour->declaration())->declarations()) {
+                        output_.stream() << ", ";
+                        if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                        else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                    }
+                    output_.stream() << " };\n";
                 }
             }
-            // then fields
-            for (auto field : decl.fields()) field->accept(*this);
-            // constructors
+
+            // emit constructor initializing virtual pointers eventually
             {
                 struct guard inner(output_);
-                // default constructor
-                output_.line() << emit(decl.annotation().type) << "() = default;\n";
-                // constructor with fields
                 unsigned ifield = 0;
-                output_.line() << emit(decl.annotation().type) << "(";
+                output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "(";
                 for (auto field : decl.fields()) {
                     if (ifield > 0) output_.stream() << ", "; 
                     output_.stream() << emit(field->annotation().type, std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string());
                     ++ifield;
                 }
-                output_.stream() << ");\n";
-            }
-            output_.line() << "};\n";
-        }
-
-        if (checker_.scopes().count(&decl)) {
-            for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
-            for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
-        }
-
-        // emit vtables for this type
-        if (types::implementors().count(decl.annotation().type)) {
-            struct guard inner(output_);
-
-            for (auto behaviour : types::implementors().at(decl.annotation().type)) {
-                auto bname = fullname(behaviour->declaration());
-                output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
-                // set dynamic type of this vptr inside structure
-                output_.stream() << std::hash<std::string>()(decl.annotation().type->string()) << "ull, ";
-                // set offset of this vptr inside structure
-                output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
-                // fill vtable with function pointers
-                for (auto prototype : static_cast<const ast::behaviour_declaration*>(behaviour->declaration())->declarations()) {
-                    output_.stream() << ", ";
-                    if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
-                    else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                output_.stream() << ") : ";
+                ifield = 0;
+                // initialize vpointers
+                if (types::implementors().count(decl.annotation().type)) {
+                    for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                        auto bname = fullname(behaviour->declaration());
+                        if (ifield > 0) output_.stream() << ", ";
+                        output_.stream() << "__vptr_" << bname << "(&__vtable_" << bname << "_for_" << emit(decl.annotation().type) << ")";
+                        ++ifield;
+                    }
                 }
-                output_.stream() << " };\n";
-            }
-        }
-
-        // emit constructor initializing virtual pointers eventually
-        {
-            struct guard inner(output_);
-            unsigned ifield = 0;
-            output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "(";
-            for (auto field : decl.fields()) {
-                if (ifield > 0) output_.stream() << ", "; 
-                output_.stream() << emit(field->annotation().type, std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string());
-                ++ifield;
-            }
-            output_.stream() << ") : ";
-            ifield = 0;
-            // initialize vpointers
-            if (types::implementors().count(decl.annotation().type)) {
-                for (auto behaviour : types::implementors().at(decl.annotation().type)) {
-                    auto bname = fullname(behaviour->declaration());
+                // initialize fields
+                for (auto field : decl.fields()) {
+                    auto fname = std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string();
                     if (ifield > 0) output_.stream() << ", ";
-                    output_.stream() << "__vptr_" << bname << "(&__vtable_" << bname << "_for_" << emit(decl.annotation().type) << ")";
+                    output_.stream() << fname << "(" << fname << ")";
                     ++ifield;
                 }
-            }
-            // initialize fields
-            for (auto field : decl.fields()) {
-                auto fname = std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string();
-                if (ifield > 0) output_.stream() << ", ";
-                output_.stream() << fname << "(" << fname << ")";
-                ++ifield;
-            }
-            output_.stream() << " {}\n";
+                output_.stream() << " {}\n";
+            }        
         }
     }
     
@@ -959,151 +1021,168 @@ namespace nemesis {
     {
         if (decl.generic()) return;
 
-        {
-            guard guard(output_);
-
-            output_.line() << prototype(&decl) << " {\n";
-
+        if (pass_ == pass::declare) {
             {
-                struct guard inner(output_);
-                // first emits vpointers if any
-                if (types::implementors().count(decl.annotation().type)) {
-                    for (auto behaviour : types::implementors().at(decl.annotation().type)) {
-                        auto bname = fullname(behaviour->declaration());
-                        output_.line() << "__vtable_" << bname << "* __vptr_" << bname << ";\n";
-                    }
-                }
-                // tag field is used to identify current type
-                output_.line() << "std::size_t __tag;\n";
-                // for each subtype there exists a field whose name is the hash of type name inside an anonymous union (no duplicate types!!)
-                output_.line() << "union {\n";
-                
+                guard guard(output_);
+
+                output_.line() << prototype(&decl) << " {\n";
+
                 {
                     struct guard inner(output_);
-                    // each field name is the hash of its type (unique within a variant)
-                    for (auto type : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
-                        output_.line() << emit(type, "_" + std::to_string(std::hash<std::string>()(type->string()))) << ";\n";
+                    // first emits vpointers if any
+                    if (types::implementors().count(decl.annotation().type)) {
+                        for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                            auto bname = fullname(behaviour->declaration());
+                            output_.line() << "__vtable_" << bname << "* __vptr_" << bname << ";\n";
+                        }
                     }
+                    // tag field is used to identify current type
+                    output_.line() << "std::size_t __tag;\n";
+                    // for each subtype there exists a field whose name is the hash of type name inside an anonymous union (no duplicate types!!)
+                    output_.line() << "union {\n";
+                    
+                    {
+                        struct guard inner(output_);
+                        // each field name is the hash of its type (unique within a variant)
+                        for (auto type : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
+                            output_.line() << emit(type, "_" + std::to_string(std::hash<std::string>()(type->string()))) << ";\n";
+                        }
+                    }
+                    
+                    output_.line() << "};\n";
+
+                    // definitions of routine functions for non-trivial members of the union
+                    // constructor
+                    output_.line() << emit(decl.annotation().type) << "();\n";
+                    // copy constructor
+                    output_.line() << emit(decl.annotation().type) << "(const " << emit(decl.annotation().type) << "& other);\n";
+                    // copy assignment
+                    output_.line() << "void operator=(const " << emit(decl.annotation().type) << "& other);\n";
+                    // destructor
+                    output_.line() << "~" << emit(decl.annotation().type) << "();\n";
                 }
-                
+
                 output_.line() << "};\n";
-
-                // definitions of routine functions for non-trivial members of the union
-                // constructor
-                output_.line() << emit(decl.annotation().type) << "();\n";
-                // copy constructor
-                output_.line() << emit(decl.annotation().type) << "(const " << emit(decl.annotation().type) << "& other) : __tag(other.__tag) {\n";
-                {
-                    struct guard inner(output_);
-                    output_.line() << "switch (other.__tag) {\n";
-                    for (auto subtype : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
-                        auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
-                        output_.line() << "case " << hash << "ull: new(&_" << hash << ") " << emit(subtype) << "(other._" << hash << "); break;\n"; 
-                    }
-                    output_.line() << "default: break;\n";
-                    output_.line() << "}\n";
-                }
-                output_.line() << "}\n";
-                // copy assignment
-                output_.line() << "void operator=(const " << emit(decl.annotation().type) << "& other) {\n";
-                {
-                    struct guard inner(output_);
-                    output_.line() << "__tag = other.__tag;\n";
-                    output_.line() << "switch (other.__tag) {\n";
-                    for (auto subtype : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
-                        auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
-                        output_.line() << "case " << hash << "ull: new(&_" << hash << ") " << emit(subtype) << "(other._" << hash << "); break;\n";
-                    }
-                    output_.line() << "default: break;\n";
-                    output_.line() << "}\n";
-                }
-                output_.line() << "}\n";
-                // destructor
-                output_.line() << "~" << emit(decl.annotation().type) << "() {}\n";
             }
 
-            output_.line() << "};\n";
-        }
+            // emit designated initializers' prototypes for each variant type
+            for (auto type : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
+                struct guard inner(output_);
+                auto hash = std::to_string(std::hash<std::string>()(type->string()));
+                // emits constructor for each of its types
+                output_.line() << emit(decl.annotation().type) << " " << emit(decl.annotation().type) << "_init_" << hash << "(" << emit(type, "init") << ");\n";
+                // then emits explicit conversions to each of its types
+                output_.line() << emit(type) << " " << emit(decl.annotation().type) << "_as_" << hash << "(" << emit(decl.annotation().type, "self") << ", const char* file, int line, int column);\n";
+            }
 
-        // emit designated initializers' prototypes for each variant type
-        for (auto type : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
-            struct guard inner(output_);
-            auto hash = std::to_string(std::hash<std::string>()(type->string()));
-            // emits constructor for each of its types
-            output_.line() << emit(decl.annotation().type) << " " << emit(decl.annotation().type) << "_init_" << hash << "(" << emit(type, "init") << ");\n";
-            // then emits explicit conversions to each of its types
-            output_.line() << emit(type) << " " << emit(decl.annotation().type) << "_as_" << hash << "(" << emit(decl.annotation().type, "self") << ", const char* file, int line, int column);\n";
-        }
-
-        if (checker_.scopes().count(&decl)) {
-            for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
-            for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
-        }
-
-        // emit vtables for this type
-        if (types::implementors().count(decl.annotation().type)) {
-            struct guard inner(output_);
-
-            for (auto behaviour : types::implementors().at(decl.annotation().type)) {
-                auto bname = fullname(behaviour->declaration());
-                output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
-                // set dynamic type of this vptr inside structure
-                output_.stream() << std::hash<std::string>()(decl.annotation().type->string()) << "ull, ";
-                // set offset of this vptr inside structure
-                output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
-                // fill vtable with function pointers
-                for (auto prototype : static_cast<const ast::behaviour_declaration*>(behaviour->declaration())->declarations()) {
-                    output_.stream() << ", ";
-                    if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
-                    else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+            if (checker_.scopes().count(&decl)) {
+                for (auto function : checker_.scopes().at(&decl)->functions()) {
+                    if (auto fdecl = dynamic_cast<const ast::function_declaration*>(function.second)) { if (!fdecl->generic()) output_.stream() << prototype(fdecl) << ";\n"; }
+                    else if (auto fdecl = dynamic_cast<const ast::property_declaration*>(function.second)) output_.stream() << prototype(fdecl) << ";\n";
                 }
-                output_.stream() << " };\n";
             }
         }
-
-        // emit basic constructor filling vpointers eventyally
-        output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "()";
-        // initialize vpointers
-        if (types::implementors().count(decl.annotation().type)) {
-            output_.stream() << " : ";
-            unsigned ifield = 0;
-            for (auto behaviour : types::implementors().at(decl.annotation().type)) {
-                auto bname = fullname(behaviour->declaration());
-                if (ifield > 0) output_.stream() << ", ";
-                output_.stream() << "__vptr_" << bname << "(&__vtable_" << bname << "_for_" << emit(decl.annotation().type) << ")";
-                ++ifield;
-            }
-        }
-        output_.stream() << " {}\n";
-
-        // create designated initializers for each variant type
-        for (auto type : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
-            struct guard inner(output_);
-            auto hash = std::to_string(std::hash<std::string>()(type->string()));
-            
-            // emits constructor for each of its types
-            output_.line() << emit(decl.annotation().type) << " " << emit(decl.annotation().type) << "_init_" << hash << "(" << emit(type, "init") << ") {\n";
-            
+        else {
+            // copy constructor
+            output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "(const " << emit(decl.annotation().type) << "& other) : __tag(other.__tag) {\n";
             {
                 struct guard inner(output_);
-                output_.line() << emit(decl.annotation().type, "result") << ";\n";
-                output_.line() << "result.__tag = " << hash << "ull;\n";
-                output_.line() << "new(&result._" << hash << ") " << emit(type) << "(init);\n";
-                output_.line() << "return result;\n";
+                output_.line() << "switch (other.__tag) {\n";
+                for (auto subtype : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
+                    auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
+                    output_.line() << "case " << hash << "ull: new(&_" << hash << ") " << emit(subtype) << "(other._" << hash << "); break;\n"; 
+                }
+                output_.line() << "default: break;\n";
+                output_.line() << "}\n";
             }
-
             output_.line() << "}\n";
-
-            // then emits explicit conversions to each of its types
-            output_.line() << emit(type) << " " << emit(decl.annotation().type) << "_as_" << hash << "(" << emit(decl.annotation().type, "self") << ", const char* file, int line, int column) {\n";
-            
+            // copy assignment
+            output_.line() << "void " << emit(decl.annotation().type) << "::operator=(const " << emit(decl.annotation().type) << "& other) {\n";
             {
                 struct guard inner(output_);
-                output_.line() << "if (self.__tag != " << hash << "ull) __crash(\"damn, you cannot explictly convert variant since it has a different run-time type!\", file, line, column);\n";
-                output_.line() << "return self._" << hash << "; \n";
+                output_.line() << "__tag = other.__tag;\n";
+                output_.line() << "switch (other.__tag) {\n";
+                for (auto subtype : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
+                    auto hash = std::to_string(std::hash<std::string>()(subtype->string()));
+                    output_.line() << "case " << hash << "ull: new(&_" << hash << ") " << emit(subtype) << "(other._" << hash << "); break;\n";
+                }
+                output_.line() << "default: break;\n";
+                output_.line() << "}\n";
+            }
+            output_.line() << "}\n";
+            // destructor
+            output_.line() << emit(decl.annotation().type) << "::~" << emit(decl.annotation().type) << "() {}\n";
+
+            if (checker_.scopes().count(&decl)) {
+                for (auto constant : checker_.scopes().at(&decl)->values()) constant.second->accept(*this);
+                for (auto function : checker_.scopes().at(&decl)->functions()) function.second->accept(*this);
             }
 
-            output_.line() << "}\n";
+            // emit vtables for this type
+            if (types::implementors().count(decl.annotation().type)) {
+                struct guard inner(output_);
+
+                for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                    auto bname = fullname(behaviour->declaration());
+                    output_.line() << "static __vtable_" << bname << " __vtable_" << fullname(behaviour->declaration()) << "_for_" << emit(decl.annotation().type) << " = { ";
+                    // set dynamic type of this vptr inside structure
+                    output_.stream() << std::hash<std::string>()(decl.annotation().type->string()) << "ull, ";
+                    // set offset of this vptr inside structure
+                    output_.stream() << "offsetof(" << emit(decl.annotation().type) << ", __vptr_" << bname << ")";
+                    // fill vtable with function pointers
+                    for (auto prototype : static_cast<const ast::behaviour_declaration*>(behaviour->declaration())->declarations()) {
+                        output_.stream() << ", ";
+                        if (auto function = std::dynamic_pointer_cast<ast::function_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                        else if (auto function = std::dynamic_pointer_cast<ast::property_declaration>(prototype)) output_.stream() << "(void (*)(void*)) &" << emit(decl.annotation().type) << "_" << function->name().lexeme();
+                    }
+                    output_.stream() << " };\n";
+                }
+            }
+
+            // emit basic constructor filling vpointers eventyally
+            output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "()";
+            // initialize vpointers
+            if (types::implementors().count(decl.annotation().type)) {
+                output_.stream() << " : ";
+                unsigned ifield = 0;
+                for (auto behaviour : types::implementors().at(decl.annotation().type)) {
+                    auto bname = fullname(behaviour->declaration());
+                    if (ifield > 0) output_.stream() << ", ";
+                    output_.stream() << "__vptr_" << bname << "(&__vtable_" << bname << "_for_" << emit(decl.annotation().type) << ")";
+                    ++ifield;
+                }
+            }
+            output_.stream() << " {}\n";
+
+            // create designated initializers for each variant type
+            for (auto type : std::static_pointer_cast<ast::variant_type>(decl.annotation().type)->types()) {
+                struct guard inner(output_);
+                auto hash = std::to_string(std::hash<std::string>()(type->string()));
+                
+                // emits constructor for each of its types
+                output_.line() << emit(decl.annotation().type) << " " << emit(decl.annotation().type) << "_init_" << hash << "(" << emit(type, "init") << ") {\n";
+                
+                {
+                    struct guard inner(output_);
+                    output_.line() << emit(decl.annotation().type, "result") << ";\n";
+                    output_.line() << "result.__tag = " << hash << "ull;\n";
+                    output_.line() << "new(&result._" << hash << ") " << emit(type) << "(init);\n";
+                    output_.line() << "return result;\n";
+                }
+
+                output_.line() << "}\n";
+
+                // then emits explicit conversions to each of its types
+                output_.line() << emit(type) << " " << emit(decl.annotation().type) << "_as_" << hash << "(" << emit(decl.annotation().type, "self") << ", const char* file, int line, int column) {\n";
+                
+                {
+                    struct guard inner(output_);
+                    output_.line() << "if (self.__tag != " << hash << "ull) __crash(\"damn, you cannot explictly convert variant since it has a different run-time type!\", file, line, column);\n";
+                    output_.line() << "return self._" << hash << "; \n";
+                }
+
+                output_.line() << "}\n";
+            }
         }
     }
 
@@ -2055,6 +2134,11 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
+        if (auto temporary = dynamic_cast<const ast::var_declaration*>(expr.annotation().referencing)) {
+            output_.stream() << temporary->name().lexeme();
+            return;
+        }
+
         output_.stream() << "if (";
         expr.condition()->accept(*this);
         output_.stream() << ") {\n";
@@ -2076,19 +2160,26 @@ namespace nemesis {
     void code_generator::visit(const ast::for_range_expression& expr)
     {
         if (emit_if_constant(expr)) return;
+
+        if (auto temporary = dynamic_cast<const ast::var_declaration*>(expr.annotation().referencing)) {
+            output_.stream() << temporary->name().lexeme();
+            return;
+        }
         
         switch (expr.condition()->annotation().type->category()) {
         case ast::type::category::range_type:
         {
             auto temp = "__i" + std::to_string(std::rand());
+            auto temp2 = "__i" + std::to_string(std::rand());
             output_.line() << "auto " << temp << " = ";
             expr.condition()->accept(*this);
-            output_.stream() << ".begin();\n";
+            output_.stream() << ".begin(), " << temp2 << " = ";
+            expr.condition()->accept(*this);
+            output_.stream() << ".end();\n";
             output_.line() << "for (; " << temp;
             if (std::dynamic_pointer_cast<ast::range_type>(expr.condition()->annotation().type)->is_open()) output_.stream() << "< ";
-            else output_.stream() << "<= ";
-            expr.condition()->accept(*this);
-            output_.stream() << ".end(); ++" << temp << ") {\n";
+            else output_.stream() << " <= ";
+            output_.stream() << temp2 << "; ++" << temp << ") {\n";
             {
                 struct guard inner(output_);
                 expr.variable()->accept(*this);
@@ -2165,6 +2256,11 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
+        if (auto temporary = dynamic_cast<const ast::var_declaration*>(expr.annotation().referencing)) {
+            output_.stream() << temporary->name().lexeme();
+            return;
+        }
+
         if (expr.condition()) {
             auto temp = "__c" + std::to_string(std::rand());
             output_.line() << "bool " << temp << " = true;\n";
@@ -2194,6 +2290,11 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
+        if (auto temporary = dynamic_cast<const ast::var_declaration*>(expr.annotation().referencing)) {
+            output_.stream() << temporary->name().lexeme();
+            return;
+        }
+
         output_.stream() << "if (";
         expr.condition()->accept(*this);
         output_.stream() << ".__tag == " << std::to_string(std::hash<std::string>()(expr.type_expression()->annotation().type->string())) << "ull) {\n";
@@ -2209,6 +2310,11 @@ namespace nemesis {
     void code_generator::visit(const ast::when_pattern_expression& expr)
     {
         if (emit_if_constant(expr)) return;
+
+        if (auto temporary = dynamic_cast<const ast::var_declaration*>(expr.annotation().referencing)) {
+            output_.stream() << temporary->name().lexeme();
+            return;
+        }
 
         output_.stream() << "if (";
         if (auto condition = std::dynamic_pointer_cast<ast::pattern_expression>(expr.pattern())->compiled()) condition->accept(*this);
@@ -2226,6 +2332,11 @@ namespace nemesis {
     void code_generator::visit(const ast::when_expression& expr)
     {
         if (emit_if_constant(expr)) return;
+
+        if (auto temporary = dynamic_cast<const ast::var_declaration*>(expr.annotation().referencing)) {
+            output_.stream() << temporary->name().lexeme();
+            return;
+        }
         
         unsigned i = 0;
 
@@ -2372,7 +2483,6 @@ namespace nemesis {
     {
         // first, before return statement, we must test invariant and ensure contracts, if any
         emit_out_contracts(*stmt.annotation().scope);
-
         // stack trace update of location
         output_.stream() << "#if __DEVELOPMENT__\n";
         output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
@@ -2413,6 +2523,58 @@ namespace nemesis {
         }
 
         output_.stream() << ";\n";
+    }
+
+    void code_generator::visit(const ast::break_statement& stmt)
+    {
+        // first, before return statement, we must test invariant and ensure contracts, if any
+        emit_out_contracts(*stmt.annotation().scope);
+        // stack trace update of location
+        output_.stream() << "#if __DEVELOPMENT__\n";
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#endif\n";
+
+        if (stmt.expression()) {
+            if (types::compatible(types::unit(), stmt.expression()->annotation().type)) {
+                output_.line() << "break";
+            }
+            else switch (stmt.expression()->kind()) {
+                case ast::kind::if_expression:
+                case ast::kind::when_cast_expression:
+                case ast::kind::when_pattern_expression:
+                case ast::kind::when_expression:
+                case ast::kind::for_loop_expression:
+                case ast::kind::for_range_expression:
+                {
+                    stmt.expression()->accept(*this);
+                    output_.line() << "break";
+                    break;
+                }
+                default:
+                    if (!result_vars.empty()) {
+                        output_.line() << result_vars.top() << " = "; 
+                        stmt.expression()->accept(*this);
+                        output_.stream() << ";\n";
+                    }
+                    output_.line() << "break"; 
+            }
+        }
+        else {
+            output_.line() << "break";
+        }
+
+        output_.stream() << ";\n";
+    }
+
+    void code_generator::visit(const ast::continue_statement& stmt)
+    {
+        // first, before return statement, we must test invariant and ensure contracts, if any
+        emit_out_contracts(*stmt.annotation().scope);
+        // stack trace update of location
+        output_.stream() << "#if __DEVELOPMENT__\n";
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#endif\n";
+        output_.line() << "continue;\n";
     }
 
     void code_generator::visit(const ast::contract_statement& stmt)

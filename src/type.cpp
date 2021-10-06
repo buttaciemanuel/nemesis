@@ -601,6 +601,8 @@ namespace nemesis {
         if (right->category() == ast::type::category::behaviour_type && left->category() != ast::type::category::behaviour_type) return assignment_compatible(right, left);
         // range switch
         if (right->category() == ast::type::category::range_type && left->category() != ast::type::category::range_type) return assignment_compatible(right, left);
+        // variant switch
+        if (right->category() == ast::type::category::variant_type && std::static_pointer_cast<ast::variant_type>(right)->contains(left)) return true;
 
         switch (left->category())
         {

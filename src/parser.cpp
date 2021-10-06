@@ -1941,7 +1941,7 @@ namespace nemesis {
             }
         }
         else if (match(token::kind::break_kw)) {
-            if (previous().eol || current().is(token::kind::semicolon)) {
+            if (previous().eol || current().is(token::kind::semicolon) || current().is(token::kind::right_brace)) {
                 match(token::kind::semicolon);
                 return ast::create<ast::break_statement>(previous().range(), nullptr);
             }
