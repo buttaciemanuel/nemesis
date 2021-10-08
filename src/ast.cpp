@@ -1436,7 +1436,7 @@ namespace nemesis {
             
         pointer<ast::declaration>& concept_declaration::generic() const { return generic_; }
             
-        token concept_declaration::name() const { return name_; }
+        token& concept_declaration::name() const { return name_; }
 
         pointer<ast::expression>& concept_declaration::base() const { return base_; }    
         

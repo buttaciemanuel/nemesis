@@ -51,3 +51,13 @@ concept(T) iterable {
 concept(T) iterator {
     function(U) next(self: T) U | none
 }
+
+// this is the concept for printable object
+concept(T) printable {
+    .str(self: T) string
+}
+
+// this is the concept for indexable object
+concept(T) indexable {
+    function(I, R) at(self: T, index: I) R
+}

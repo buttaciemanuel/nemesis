@@ -635,6 +635,7 @@ namespace nemesis {
         subs.substitute();
         clone->generic() = nullptr;
         clone->annotation().scope = cdecl.annotation().scope;
+        clone->name() = token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(cname.data(), cname.size()).build()).build();
 
         std::unordered_map<std::string, types::parameter> arguments;
 
@@ -656,11 +657,14 @@ namespace nemesis {
         }
 
         auto saved = scope_;
-        
+        auto pass = pass_;
+
         scope_ = scopes_.at(clone->annotation().scope);
+        pass_ = pass::third;        
 
         try { clone->accept(*this); } catch (abort_error&) { throw; }
 
+        pass_ = pass;
         scope_ = saved;
 
         // pops declaration from instantiation stack
@@ -680,9 +684,28 @@ namespace nemesis {
                     for (auto test : scopes_.at(type->declaration())->functions()) {
                         if (test.second->kind() != ast::kind::function_declaration || test.first != function->name().lexeme().string()) continue;
                         auto testfunction = static_cast<const ast::function_declaration*>(test.second);
-                        if (testfunction->generic() || testfunction->parameters().size() != function->parameters().size()) continue;
-                        // test for type mismatch
-                        if (!types::compatible(testfunction->annotation().type, function->annotation().type)) continue;
+                        if (testfunction->parameters().size() != function->parameters().size()) continue;
+                        // type matching
+                        ast::type_matcher::result match;
+                        // then we try to deduce generic arguments from function arguments
+                        for (std::size_t i = 0; i < function->parameters().size(); ++i) {
+                            auto param = std::dynamic_pointer_cast<ast::parameter_declaration>(testfunction->parameters().at(i));
+                            ast::type_matcher matcher(param->type_expression(), function->parameters().at(i)->annotation().type, publisher());
+                            if (!matcher.match(param->type_expression()->annotation().type, match, std::static_pointer_cast<ast::parameter_declaration>(function->parameters().at(i))->is_variadic()) && !match.duplication) {
+                                auto param = std::static_pointer_cast<ast::parameter_declaration>(function->parameters().at(i));
+                                auto builder = diagnostic::builder()
+                                            .location(param->type_expression()->range().begin())
+                                            .severity(diagnostic::severity::error)
+                                            .small(true)
+                                            .highlight(param->type_expression()->range(), diagnostic::format("expected $", param->annotation().type->string()))
+                                            .message(diagnostic::format("Type mismatch between argument and parameter, found `$` and `$`.", param->type_expression()->annotation().type->string(), param->annotation().type->string()))
+                                            .note(param->name().range(), diagnostic::format("Have a look at parameter `$` idiot.", param->name().lexeme()));
+                                
+                                publisher().publish(builder.build());
+                            }
+                        }
+                        // no match
+                        if (!match) continue;
                         // now we have match for this function
                         ++matches;
                     }
@@ -697,9 +720,28 @@ namespace nemesis {
                         if (test.second->kind() != ast::kind::property_declaration || test.first != property->name().lexeme().string()) continue;
                         auto testproperty = static_cast<const ast::property_declaration*>(test.second);
                         if (testproperty->parameters().size() != property->parameters().size()) continue;
-                        // test for type mismatch
-                        if (!types::compatible(testproperty->annotation().type, property->annotation().type)) continue;
-                        // now we have match for this function
+                        // type matching
+                        ast::type_matcher::result match;
+                        // then we try to deduce generic arguments from property arguments
+                        for (std::size_t i = 0; i < property->parameters().size(); ++i) {
+                            auto param = std::dynamic_pointer_cast<ast::parameter_declaration>(testproperty->parameters().at(i));
+                            ast::type_matcher matcher(param->type_expression(), property->parameters().at(i)->annotation().type, publisher());
+                            if (!matcher.match(param->type_expression()->annotation().type, match, std::static_pointer_cast<ast::parameter_declaration>(property->parameters().at(i))->is_variadic()) && !match.duplication) {
+                                auto param = std::static_pointer_cast<ast::parameter_declaration>(property->parameters().at(i));
+                                auto builder = diagnostic::builder()
+                                            .location(param->type_expression()->range().begin())
+                                            .severity(diagnostic::severity::error)
+                                            .small(true)
+                                            .highlight(param->type_expression()->range(), diagnostic::format("expected $", param->annotation().type->string()))
+                                            .message(diagnostic::format("Type mismatch between argument and parameter, found `$` and `$`.", param->type_expression()->annotation().type->string(), param->annotation().type->string()))
+                                            .note(param->name().range(), diagnostic::format("Have a look at parameter `$` idiot.", param->name().lexeme()));
+                                
+                                publisher().publish(builder.build());
+                            }
+                        }
+                        // no match
+                        if (!match) continue;
+                        // now we have match for this property
                         ++matches;
                     }
                 }
@@ -1442,6 +1484,9 @@ namespace nemesis {
                     if (!levels.empty()) done = true;
                     else levels.push(static_cast<const ast::property_declaration*>(decl)->name().lexeme().string());
                     break;
+                case ast::kind::concept_declaration:
+                    levels.push(static_cast<const ast::concept_declaration*>(decl)->name().lexeme().string());
+                    break;
                 case ast::kind::behaviour_declaration:
                 case ast::kind::record_declaration:
                 case ast::kind::range_declaration:
@@ -1710,7 +1755,8 @@ namespace nemesis {
 
         expr.annotation().type = types::tuple(components);
         // adds anonymous aggregated type to the workspace
-        add_type(expr.annotation().type);
+        // NOTE: not necessary for tuple as std::tuple exists for tuples
+        //add_type(expr.annotation().type);
     }
     
     void checker::visit(const ast::pointer_type_expression& expr) 
@@ -4399,7 +4445,7 @@ namespace nemesis {
                                         .location(arg->range().begin())
                                         .message(diagnostic::format("Type `$` cannot be formatted as a string since it's missing conversion procedure!", tname))
                                         .highlight(arg->range(), "missing string conversion")
-                                        .explanation(diagnostic::format("I suggest providing string conversion property `str`, like this \\ \\ `extend $ { .str(self: $) string {...} }`", tname, tname));
+                                        .note(scopes_.at(compilation_.workspaces().at("core").get())->concept("printable")->name().range(), "This is declaration of `printable` concept, instead.");
 
                         publisher().publish(builder.build());
                     }
@@ -6180,6 +6226,27 @@ namespace nemesis {
 
         if (auto array_type = std::dynamic_pointer_cast<ast::array_type>(expr.expression()->annotation().type)) base = array_type->base();
         else if (auto slice_type = std::dynamic_pointer_cast<ast::slice_type>(expr.expression()->annotation().type)) base = slice_type->base();
+        else if (auto index_procedure = is_indexable(expr.expression()->annotation().type)) {
+            if (!types::assignment_compatible(index_procedure->parameters().back()->annotation().type, expr.index()->annotation().type)) {
+                auto diag = diagnostic::builder()
+                            .severity(diagnostic::severity::error)
+                            .location(expr.index()->range().begin())
+                            .message(diagnostic::format("When accessing type `$`, index must be `$`, but I found `$`, dammit!", expr.expression()->annotation().type->string(), index_procedure->parameters().back()->annotation().type->string(), expr.index()->annotation().type->string()))
+                            .highlight(expr.index()->range(), diagnostic::format("expected $", index_procedure->parameters().back()->annotation().type->string()))
+                            .highlight(expr.expression()->range(), diagnostic::highlighter::mode::light)
+                            .note(index_procedure->name().range(), diagnostic::format("Here's `at` declarating for indexing type `$`...", expr.expression()->annotation().type->string()))
+                            .build();
+                    
+                publisher().publish(diag);
+                expr.invalid(true);
+                throw semantic_error();
+            }
+            else if (auto implicit = implicit_cast(index_procedure->parameters().back()->annotation().type, expr.index())) expr.index() = implicit;
+
+            expr.annotation().implicit_procedure = index_procedure;
+            expr.annotation().type = std::dynamic_pointer_cast<ast::function_type>(index_procedure->annotation().type)->result();
+            return;
+        }
         else error(expr.expression()->range(), diagnostic::format("I was expecting an array or slice for indexing, I found `$`, f*cker!", expr.expression()->annotation().type->string()), "", "expected array or slice");
 
         if (auto rngtype = std::dynamic_pointer_cast<ast::range_type>(expr.index()->annotation().type)) {
@@ -10427,7 +10494,7 @@ namespace nemesis {
         }
 
         // if not associated function, then it is added to all workspace functions
-        if (!decl.generic() && !dynamic_cast<const ast::type_declaration*>(scope_->enclosing())) workspace()->functions.push_back(&decl);
+        if (!decl.generic() && !dynamic_cast<const ast::type_declaration*>(scope_->enclosing()) && !dynamic_cast<const ast::concept_declaration*>(scope_->enclosing())) workspace()->functions.push_back(&decl);
     }
 
     void checker::visit(const ast::property_declaration& decl) 
@@ -10483,7 +10550,7 @@ namespace nemesis {
 
         if (!decl.body()) {
             if (auto outer = scope_->parent()->outscope(environment::kind::declaration)) {
-                if (outer->kind() != ast::kind::behaviour_declaration && outer->kind() != ast::kind::extern_declaration) {
+                if (outer->kind() != ast::kind::concept_declaration && outer->kind() != ast::kind::behaviour_declaration && outer->kind() != ast::kind::extern_declaration) {
                     decl.invalid(true);
                     report(decl.name().range(), "You must provide a body for this property, idiot!", "", "expected body");
                 }
@@ -10560,7 +10627,7 @@ namespace nemesis {
 
         // checks for implicit conversion or operator functions or properties
         if (!decl.invalid() && decl.name().lexeme().string() == "str") {
-            if (!types::compatible(typescope->annotation().type, fntype->formals().front()) || fntype->result()->category() != ast::type::category::string_type) {
+            if (typescope && (!types::compatible(typescope->annotation().type, fntype->formals().front()) || fntype->result()->category() != ast::type::category::string_type)) {
                 auto tname = typescope->annotation().type->string();
                 warning(decl.name().range(), diagnostic::format("Property `str` won't be considered for conversion of type `$` to `string` as it doesn't respect its prototype!", tname), diagnostic::format("I suggest providing string conversion property `str`, like this \\ \\ `extend $ { .str(self: $) string {...} }`", tname, tname), "wrong prototype");
             }
@@ -10667,6 +10734,8 @@ namespace nemesis {
         else if (pass_ == pass::third) {
             for (auto prototype : scope_->functions()) prototype.second->accept(*this);
         }
+
+        scope_ = saved;
 
         end_scope();
 
@@ -10818,6 +10887,23 @@ namespace nemesis {
                 if (!types::assignment_compatible(mutable_pointer, paramdecl->annotation().type)) continue;
                 auto result = std::dynamic_pointer_cast<ast::variant_type>(std::static_pointer_cast<ast::function_type>(fdecl->annotation().type)->result());
                 if (!result || result->types().size() != 2 || !result->contains(scopes_.at(compilation_.workspaces().at("core").get())->type("none")->annotation().type)) continue;
+                return fdecl;
+            }
+        }
+
+        return nullptr;
+    }
+
+    const ast::function_declaration* checker::is_indexable(ast::pointer<ast::type> type) const
+    {
+        if (!types::builtin(type->string()) && type->declaration()) {
+            for (auto fn : scopes_.at(type->declaration())->functions()) {
+                if (fn.first != "at" || fn.second->kind() != ast::kind::function_declaration) continue;
+                auto fdecl = static_cast<const ast::function_declaration*>(fn.second);
+                if (fdecl->generic() || fdecl->parameters().size() != 2) continue;
+                auto paramdecl = std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().front());
+                if (paramdecl->is_variadic() || std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().back())->is_variadic()) continue;
+                if (!types::assignment_compatible(type, paramdecl->annotation().type)) continue;
                 return fdecl;
             }
         }

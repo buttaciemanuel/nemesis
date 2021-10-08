@@ -1795,7 +1795,7 @@ namespace nemesis {
             /**
              * @return Concept name
              */
-            token name() const;
+            token& name() const;
             /**
              * @return Base concept expression
              */

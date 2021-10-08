@@ -969,7 +969,7 @@ I concept permettono di definire delle restrizioni su un determinato tipo di dat
 }
 // un tipo di dato è sized se definisce la proprietà `size`
 <b>concept</b>(T) sized {
-    .size(t: T) usize
+    .size(t: T) <b>usize</b>
 }
 // il concept numeric è predicato di tutti i tipi di dato che hanno le seguenti funzionalità
 <b>concept</b>(T) numeric {
@@ -983,12 +983,20 @@ I concept permettono di definire delle restrizioni su un determinato tipo di dat
 // concept per sequenza che possa essere attraversata
 <b>concept</b>(T) iterable {
     // genera iteratore
-    function(Iter) walk(sequence: T) Iter; 
+    <b>function</b>(Iter) walk(sequence: T) Iter; 
 }
 // concept per iteratore
 <b>concept</b>(T) iterator {
     // passa al prossimo elemento, se presente
-    function(U) next(mutable iter: *T) U | none;
+    <b>function</b>(U) next(mutable iter: *T) U | none;
+}
+// concept per tipo stampabile in stringa di formato
+<b>concept</b>(T) printable {
+    str(self: T) string
+}
+// concept per accedere a oggetto con parentesi quadre
+<b>concept</b>(T) indexable {
+    <b>function</b>(I, R) at(self: T, index: I) R
 }
 </code></pre>
 
@@ -1028,6 +1036,9 @@ counting_sort(<b>mutable</b> sequence: [T]) {
     <b>for</b> i <b>in</b> 0..sequence.size { sequence[i] = output[i] }
 }
 </code></pre>
+
+Tutti i tipi che soddisfano il concept `iterator` possono essere attraversati mediante ciclo for range, e l'iteratore deve soddisfare il tipo `iterable`.
+Mentre quei tipi che soddisfano il concept `printable` possono essere automaticamente convertiti a stringa con l'operatore di format `{}`. Infine i tipi che implementano il concept `indexable` possono essere acceduti in lettura attraverso l'operatore subscript `[]`.
 
 ## Polimorfismo e comportamenti <a name="polymorphism"></a>
 In Nemesis è possibile ottenere un comportamento polimorfico su una classe di tipi di dato. Questo significa che è possibile definire un comportamento condiviso per diversi tipi di dato e a tempo di esecuzione viene selezionato il giusto comportamento, specifico per un determinato tipo di dato. Un blocco `behaviour` permette di definire una serie di comportamenti, ovvero funzioni, che operano sul dato. Tuttavia, affinchè avvenga la risoluzione a run-time, il parametro deve essere passato come riferimento. Il fenomeno di *upcasting*, ovvero la conversione di un tipo (come riferimento) al tipo di dato che definisce i comportamenti, avviene quando si ha una collezione eterogenea di dati che condividono comportamenti condivisi. Qualora non avvenga il passaggio per riferimento, ma per copia, si ha il pericoloso fenomeno di *slicing*, ovvero corruzione del dato dovuto al differente memory layout dei diversi tipi di dato che implementano un comportamento condiviso.

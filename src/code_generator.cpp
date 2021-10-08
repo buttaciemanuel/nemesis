@@ -52,6 +52,8 @@ namespace nemesis {
 
         // for each workspace it generates a new C++ file to compile if workspace's package is not set as builtin
         for (auto workspace : checker_.compilation().workspaces()) {
+            // sets current library
+            workspace_ = workspace.second;
             // whenever we encounter a builtin package then we skip its workspaces' code generation
             if (checker_.compilation().package(workspace.second->package).builtin) continue;
             // target name
@@ -299,6 +301,17 @@ namespace nemesis {
         return result + " " + variable;
     }
 
+    namespace impl {
+        std::string encode_string_value(std::string value) 
+        {
+            std::ostringstream result;
+            result << "\"";
+            for (const char* p = value.data(); p < value.data() + value.size(); ++p) result << "\\x" << std::hex << static_cast<int>(*p);
+            result << "\"";
+            return result.str();
+        }
+    }
+
     std::string code_generator::emit(constval value) const
     {
         switch (value.type->category()) {
@@ -307,9 +320,9 @@ namespace nemesis {
             case nemesis::ast::type::category::char_type:
                 return std::to_string(value.ch);
             case nemesis::ast::type::category::chars_type:
-                return "__chars(\"" + value.s + "\")";
+                return "__chars(" + impl::encode_string_value(value.s) + ")";
             case nemesis::ast::type::category::string_type:
-                return "std::string(\"" + value.s + "\")";
+                return "std::string(" + impl::encode_string_value(value.s) + ")";
             case nemesis::ast::type::category::integer_type:
             {
                 auto type = std::dynamic_pointer_cast<nemesis::ast::integer_type>(value.type);
@@ -507,7 +520,7 @@ namespace nemesis {
     {
         struct guard guard(output_);
         auto fntype = std::dynamic_pointer_cast<ast::function_type>(lambda->annotation().type);
-        std::size_t id = workspace_->lambdas[lambda];
+        std::size_t id = workspace_->lambdas.at(lambda);
 
         output_.line() << "struct __lambda" << id << " : __lambda<";
 
@@ -607,6 +620,9 @@ namespace nemesis {
                     // property name scope is added only if it is the property full name to be resolved
                     if (!levels.empty()) done = true;
                     else levels.push(static_cast<const ast::property_declaration*>(decl)->name().lexeme().string());
+                    break;
+                case ast::kind::concept_declaration:
+                    levels.push(static_cast<const ast::concept_declaration*>(decl)->name().lexeme().string());
                     break;
                 case ast::kind::behaviour_declaration:
                 case ast::kind::record_declaration:
@@ -936,7 +952,7 @@ namespace nemesis {
                 {
                     struct guard inner(output_);
                     // default constructor
-                    output_.line() << emit(decl.annotation().type) << "() = default;\n";
+                    if (!decl.fields().empty()) output_.line() << emit(decl.annotation().type) << "() = default;\n";
                     // constructor with fields
                     unsigned ifield = 0;
                     output_.line() << emit(decl.annotation().type) << "(";
@@ -994,7 +1010,8 @@ namespace nemesis {
                     output_.stream() << emit(field->annotation().type, std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string());
                     ++ifield;
                 }
-                output_.stream() << ") : ";
+                output_.stream() << ") ";
+                if (types::implementors().count(decl.annotation().type) || !decl.fields().empty()) output_.stream() << ": ";
                 ifield = 0;
                 // initialize vpointers
                 if (types::implementors().count(decl.annotation().type)) {
@@ -1661,6 +1678,9 @@ namespace nemesis {
             if ((expr.annotation().referencing->kind() == ast::kind::const_declaration || expr.annotation().referencing->kind() == ast::kind::generic_const_parameter_declaration) && expr.annotation().value.type && expr.annotation().value.type->category() != ast::type::category::unknown_type) {
                 output_.stream() << emit(expr.annotation().value);
             }
+            else if (auto cp = dynamic_cast<const ast::concept_declaration*>(expr.annotation().referencing)) {
+                if (expr.annotation().isconcept && expr.annotation().value.type->category() == ast::type::category::bool_type) output_.stream() << emit(expr.annotation().value);
+            }
             // builtin functions
             else if (auto fn = dynamic_cast<const ast::function_declaration*>(expr.annotation().referencing)) {
                 // strips name from generic arguments
@@ -1872,6 +1892,16 @@ namespace nemesis {
     void code_generator::visit(const ast::array_index_expression& expr)
     {
         if (emit_if_constant(expr)) return;
+
+        // implicit iterator
+        if (auto index_procedure = dynamic_cast<const ast::function_declaration*>(expr.annotation().implicit_procedure)) {
+            output_.stream() << fullname(index_procedure) << "(";
+            expr.expression()->accept(*this);
+            output_.stream() << ", ";
+            expr.index()->accept(*this);
+            output_.stream() << ")";
+            return;
+        }
 
         switch (expr.expression()->annotation().type->category()) {
             case ast::type::category::array_type:
@@ -2385,7 +2415,7 @@ namespace nemesis {
     void code_generator::visit(const ast::function_expression& expr)
     {
         unsigned index = 0;
-        output_.stream() << "__lambda" << workspace_->lambdas[&expr] << "::__new(";
+        output_.stream() << "__lambda" << workspace_->lambdas.at(&expr) << "::__new(";
         
         for (auto captured : expr.captured()) {
             if (index++ > 0) output_.stream() << ", ";

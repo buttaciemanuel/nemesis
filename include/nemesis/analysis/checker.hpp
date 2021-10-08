@@ -115,6 +115,7 @@ namespace nemesis {
         const ast::function_declaration* is_default_constructible(ast::pointer<ast::type> type) const;
         const ast::function_declaration* is_iterable(ast::pointer<ast::type> type) const;
         const ast::function_declaration* is_iterator(ast::pointer<ast::type> type) const;
+        const ast::function_declaration* is_indexable(ast::pointer<ast::type> type) const;
         bool is_string_convertible(ast::pointer<ast::type> type, const ast::property_declaration*& procedure) const;
         void test_immutable_assignment(const ast::var_declaration& decl, const ast::expression& value) const;
         void test_immutable_assignment(ast::pointer<ast::type> lvalue, const ast::expression& rvalue) const;
