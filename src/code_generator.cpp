@@ -932,7 +932,7 @@ namespace nemesis {
     {
         if (decl.generic()) return;
 
-        if (pass_ == pass::declare) {    
+        if (pass_ == pass::declare) {
             {
                 guard guard(output_);
 
@@ -963,6 +963,8 @@ namespace nemesis {
                     }
                     output_.stream() << ");\n";
                 }
+                // destructor, if implemented
+                //if (checker_.is_destructible(decl.annotation().type)) output_.stream() << "~" << emit(decl.annotation().type) << "();\n";
                 output_.line() << "};\n";
             }
 
@@ -1030,7 +1032,12 @@ namespace nemesis {
                     ++ifield;
                 }
                 output_.stream() << " {}\n";
-            }        
+            }
+            // emit destructor, if implemented
+            /*if (auto destructor = checker_.is_destructible(decl.annotation().type)) {
+                struct guard inner(output_);
+                output_.stream() << emit(decl.annotation().type) << "::~" << emit(decl.annotation().type) << "() { " << fullname(destructor) << "(this); }\n";
+            }*/       
         }
     }
     
@@ -1287,6 +1294,11 @@ namespace nemesis {
             if (&decl == checker_.entry_point() && !decl.parameters().empty()) {
                 struct guard inner(output_);
                 auto args_name = std::static_pointer_cast<ast::parameter_declaration>(decl.parameters().front())->name().lexeme();
+                output_.line() << "std::signal(SIGABRT, __signal_handler);\n";
+                output_.line() << "std::signal(SIGQUIT, __signal_handler);\n";
+                output_.line() << "std::signal(SIGINT, __signal_handler);\n";
+                output_.line() << "std::signal(SIGFPE, __signal_handler);\n";
+                output_.line() << "std::signal(SIGKILL, __signal_handler);\n";
                 output_.line() << "std::vector<__chars> __args_buffer((std::size_t) __argc);\n";
                 output_.line() << "for (auto i = 0; i < __argc; ++i) __args_buffer[i] = __chars(__argv[i]);\n";
                 output_.line();
@@ -2531,6 +2543,19 @@ namespace nemesis {
         }
 
         output_.stream() << ";\n";
+    }
+
+    void code_generator::visit(const ast::later_statement& stmt)
+    {
+        // stack trace update of location
+        output_.stream() << "#if __DEVELOPMENT__\n";
+        output_.line() << "__record.location(" << stmt.range().bline << ", " << stmt.range().bcolumn << ");\n";
+        output_.stream() << "#endif\n";
+
+        // create later block for deferred action
+        output_.line() << "__later _l" << std::rand() << "([&] () { ";
+        stmt.expression()->accept(*this);
+        output_.stream() << "; });\n";
     }
 
     void code_generator::visit(const ast::return_statement& stmt)

@@ -82,6 +82,8 @@ namespace nemesis {
             is_kw,
             /** 'mutable' */
             mutable_kw,
+            /** 'later' */
+            later_kw,
             /** 'lib' */
             lib_kw,
             /** `range` */

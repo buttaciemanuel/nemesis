@@ -90,6 +90,7 @@ namespace nemesis {
 
         void visit(const ast::expression_statement& stmt);
         void visit(const ast::assignment_statement& stmt);
+        void visit(const ast::later_statement& stmt);
         void visit(const ast::return_statement& stmt);
         void visit(const ast::break_statement& stmt);
         void visit(const ast::continue_statement& stmt);

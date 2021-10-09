@@ -34,6 +34,7 @@ namespace nemesis {
         static const std::string for_expr_explanation = "You can use for expression for different purposes: • iterating over a range, for example: \\4 `for dog: *Dog in dogs { dog.bark() }` • iterating while a condition is true: \\4 `for i < n && f() { /*...*/ }` • even infinite loop: \\4 `for { /*...*/ }`";
         static const std::string constraint_expr_explanation = "When specifing a generic type parameter you can also impose some contraints over the type, for example: • `function(T) if Compare(T) & Print(T) ...` function requires T to be comparable AND printable • `type(T) Print(T) | Default(T) ...` type requires T to be printable OR default contructible";
         static const std::string assign_stmt_explanation = "When using the assignment statement the right operand may be a: • variable, like `a = 10`  • dereferenced expression, for example `*ptr = 10` • array or slice index expression, like `arr[i] = value` • field expression, for example `structure.field = value` or `tuple.1 = value` \\ Moreover you can perform different assignments based on algebraic operations: \\2 `++` `--` `+=` `-=` `/=` `%=` `*=` `**=` `<<=` `>>=` `&=` `|=` `^=`";
+        static const std::string later_stmt_explanation = "Later statement is used to defer the execution of code at the exit of a block, for example: • this will print \"hello\" when exiting current block: \\4 `later println(\"bye\")`";
         static const std::string jump_stmt_explanation = "There are three examples of jumping out of flow statements: • break statement for breaking out of a loop, eventually returning a value, for example: \\4 `break value` // yields 4 out of loop • continue expression to jump directly to the next iteration • return expression to jump out of a function, eventually returning a value, for example: \\4 `return \"hello\"` // returns \"hello\" outside the function";
         static const std::string function_decl_explanation = "You can declare a function in different ways: • `factorial(n: u32) u32 = /*...*/` without `function` keyword • `function(T) sort(seq: [T]) {/*...*/}` for a generic function • `function(T) if Add(T) sum(...args: T) T {/*...*/}` takes a variable number of arguments \\ When a function parameter is declared as mutable then it can be modified by the function. When a mutable parameter is passed by pointer it means that eventual changes will be reflected outside the call.";
         static const std::string property_decl_explanation = "You can declare a property of a type instance inside an extend block. A property can be accessed just like a field in read-only mode on an instance. Here's some example: • `.determinant(m: SquareMatrix(f32, N)) f32 {...}` defines a property on a matrix instance • `.area(s: *Shape) f32 = ...` defines a property on a (maybe polymorphic) shape instance";
@@ -1929,7 +1930,12 @@ namespace nemesis {
         guard guard(this);
         state saved = state_;
 
-        if (match(token::kind::return_kw)) {
+        if (match(token::kind::later_kw)) {
+            ast::pointer<ast::expression> expr = expect(expression(), "expression", "I expect expression here, dumb*ss!", impl::later_stmt_explanation);
+            match(token::kind::semicolon);
+            return ast::create<ast::later_statement>(source_range(saved.iter->location(), previous().range().end()), expr);
+        }
+        else if (match(token::kind::return_kw)) {
             if (previous().eol || current().is(token::kind::semicolon) || current().is(token::kind::right_brace)) {
                 match(token::kind::semicolon);
                 return ast::create<ast::return_statement>(previous().range(), nullptr);
@@ -1965,6 +1971,7 @@ namespace nemesis {
         ast::pointer<ast::statement> stmt = nullptr;
         
         switch (current().kind()) {
+            case token::kind::later_kw:
             case token::kind::return_kw:
             case token::kind::break_kw:
             case token::kind::continue_kw:

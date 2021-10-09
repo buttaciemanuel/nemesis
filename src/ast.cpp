@@ -94,6 +94,17 @@ namespace nemesis {
             
         void assignment_statement::accept(visitor& visitor) const { visitor.visit(*this); }
 
+        later_statement::later_statement(source_range range, pointer<ast::expression> expr) :
+            ast::statement(range),
+            expr_(expr)
+        {}
+            
+        later_statement::~later_statement() {}
+            
+        pointer<ast::expression>& later_statement::expression() const { return expr_; }
+            
+        void later_statement::accept(visitor& visitor) const { visitor.visit(*this); }
+        
         return_statement::return_statement(source_range range, pointer<ast::expression> expr) :
             ast::statement(range),
             expr_(expr)
@@ -2268,6 +2279,17 @@ namespace nemesis {
             prefix_.pop();
         }
 
+        void printer::visit(const later_statement& stmt)
+        {
+            stream_ << prefix_.str(stmt) << impl::color::blue << "later_statement " << impl::color::reset << stmt.range().begin() << "\n";
+            
+            if (stmt.expression()) {
+                prefix_.push(true);
+                stmt.expression()->accept(*this);
+                prefix_.pop();
+            }
+        }
+        
         void printer::visit(const return_statement& stmt)
         {
             stream_ << prefix_.str(stmt) << impl::color::blue << "return_statement " << impl::color::reset << stmt.range().begin() << "\n";

@@ -9486,6 +9486,21 @@ namespace nemesis {
         stmt.annotation().resolved = true;
     }
 
+    void checker::visit(const ast::later_statement& stmt)
+    {
+        stmt.annotation().scope = scope_->enclosing();
+        stmt.annotation().visited = true;
+
+        stmt.expression()->accept(*this);
+
+        stmt.annotation().resolved = true;
+
+        if (stmt.expression() && stmt.expression()->annotation().referencing && (stmt.expression()->kind() == ast::kind::if_expression || stmt.expression()->kind() == ast::kind::for_loop_expression || stmt.expression()->kind() == ast::kind::for_range_expression || stmt.expression()->kind() == ast::kind::when_cast_expression || stmt.expression()->kind() == ast::kind::when_pattern_expression || stmt.expression()->kind() == ast::kind::if_expression)) {
+            pending_insertions.remove_if([&](const decltype(pending_insertions)::value_type& t) { return stmt.expression()->annotation().referencing == std::get<1>(t).get(); });
+            stmt.expression()->annotation().referencing = nullptr;
+        }
+    }
+
     void checker::visit(const ast::return_statement& stmt)
     {
         stmt.annotation().scope = scope_->enclosing();
@@ -10832,7 +10847,9 @@ namespace nemesis {
                 if (fdecl->generic() || fdecl->parameters().size() != 1) continue;
                 auto paramdecl = std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().front());
                 if (paramdecl->is_variadic()) continue;
-                if (!types::assignment_compatible(type, paramdecl->annotation().type)) continue;
+                auto mutable_pointer = types::pointer(type);
+                mutable_pointer->mutability = true;
+                if (!types::assignment_compatible(mutable_pointer, paramdecl->annotation().type)) continue;
                 return fdecl;
             }
         }
@@ -12667,6 +12684,8 @@ namespace nemesis {
         stmt.left()->accept(*this);
         stmt.right()->accept(*this);
     }
+
+    void substitutions::visit(const ast::later_statement& stmt) { stmt.expression()->accept(*this); }
 
     void substitutions::visit(const ast::return_statement& stmt) { if (stmt.expression()) stmt.expression()->accept(*this); }
 

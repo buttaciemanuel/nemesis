@@ -9,6 +9,7 @@
 
 namespace nemesis {
     class substitutions;
+    class code_generator;
 
     namespace ast {
         class pattern_matcher;
@@ -18,6 +19,7 @@ namespace nemesis {
         friend class evaluator;
         friend class substitutions;
         friend class ast::pattern_matcher;
+        friend class code_generator;
     public:
         // semantic errors in the program that are printed and then analysis continues
         struct semantic_error {};
@@ -165,6 +167,7 @@ namespace nemesis {
         void visit(const ast::null_statement& stmt);
         void visit(const ast::expression_statement& stmt);
         void visit(const ast::assignment_statement& stmt);
+        void visit(const ast::later_statement& stmt);
         void visit(const ast::return_statement& stmt);
         void visit(const ast::break_statement& stmt);
         void visit(const ast::continue_statement& stmt);
@@ -326,6 +329,7 @@ namespace nemesis {
         void visit(const ast::null_statement& stmt);
         void visit(const ast::expression_statement& stmt);
         void visit(const ast::assignment_statement& stmt);
+        void visit(const ast::later_statement& stmt);
         void visit(const ast::return_statement& stmt);
         void visit(const ast::break_statement& stmt);
         void visit(const ast::continue_statement& stmt);

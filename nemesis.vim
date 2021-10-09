@@ -26,6 +26,7 @@ syn keyword nemesisKeyword
                         \ mutable
 	                \ require
 	                \ return
+                    \ later
 	                \ when
                         \ static
 	                \ test

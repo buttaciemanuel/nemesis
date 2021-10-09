@@ -133,3 +133,38 @@ void __stacktrace()
         for (auto line : after) std::cout << "     " << std::setw(width) << iline++ << " | " << line << '\n';
     }
 }
+
+void __signal_handler(int signo)
+{
+    std::cout << "• just caught signal";
+    
+    switch (signo) {
+        case SIGABRT:
+            std::cout << " SIGABRT (abort)";
+            break;
+        case SIGFPE:
+            std::cout << " SIGFPE (floating point exception)";
+            break;
+        case SIGINT:
+            std::cout << " SIGINT (interrupt)";
+            break;
+        case SIGKILL:
+            std::cout << " SIGKILL (kill)";
+            break;
+        case SIGQUIT:
+            std::cout << " SIGQUIT (quit)";
+            break;
+        default:
+            break;
+    }
+
+    std::cout << ", terminating the program...\n";
+    std::cout << "• stack traces\n";
+
+    for (unsigned int depth = 0; !__stack_table.empty(); __stack_table.pop(), ++depth) {
+        __stack_entry entry = __stack_table.top();
+        std::cout << "  #" << depth << " " << entry.function  << " at " << entry.file << ":" << entry.line << ":" << entry.column << "\n";
+    }
+
+    _Exit(EXIT_FAILURE);
+}

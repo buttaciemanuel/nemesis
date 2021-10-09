@@ -13,6 +13,7 @@ La documentazione ufficiale del linguaggio Nemesis.
     2. [If come un'espressione](#if-expr)
     3. [Selezione intelligente](#when-expr)
     4. [Quando il for è multiuso](#for-expr)
+    5. [Ritardare l'esecuzione](#later-stmt)
 8. [Tipi di dato](#typesystem)
     1. [Numeri](#numeric)
     2. [Booleani](#boolean)
@@ -377,6 +378,18 @@ La nuova funzionalità rispetto al C è il range `for` che permette l'iterazione
 </code></pre>
 
 Se gli indici non dovessero essere in ordine aritmetico, la sequenza range generata sarà vuota.
+
+### Ritardare l'esecuzione <a name="later-stmt"></a>
+Utilizzando la keyword `later` è possibile ritardare l'esecuzione di un particolare blocco di codice. Spesso risulta utile per rilasciare delle risorse al termine di un blocco.
+
+<pre><code>// alloca una sequenza
+<b>mutable val</b> sequence = allocate!(<b>u8</b>)(100)
+// imposta il rilascio della risorsa al termine
+<b>later</b> deallocate(sequence)
+// utilizza la risorsa
+...
+// la risorsa è rilasciata al termine di questo blocco
+</code></pre>
 
 ## Tipi di dato <a name="typesystem"></a>
 Nemesis è un linguaggio con tipizzazione statica i cui tipi di dato si suddividono in due categorie principali.
@@ -964,8 +977,8 @@ Il tipo `opt` è utile per rappresentare dei riferimenti nulli. Questo previene 
 I concept permettono di definire delle restrizioni su un determinato tipo di dato a tempo di compilazione. I concepts, che riprendono il concetto di typeclasses di Haskell, permettono di definire un predicato su un tipo di dato quando questo soddisfa certi vincoli, come implementare delle funzioni o delle proprietà.
 
 <pre><code>// il concept clone è definito nel seguente modo
-<b>concept</b>(T) clone {
-    clone(t: T) T;
+<b>concept</b>(T) cloneable {
+    clone(self: T) T
 }
 // un tipo di dato è sized se definisce la proprietà `size`
 <b>concept</b>(T) sized {
@@ -997,6 +1010,10 @@ I concept permettono di definire delle restrizioni su un determinato tipo di dat
 // concept per accedere a oggetto con parentesi quadre
 <b>concept</b>(T) indexable {
     <b>function</b>(I, R) at(self: T, index: I) R
+}
+// concept per distruggere un oggetto e rilasciare le risorse
+<b>concept</b>(T) destructible {
+    destroy(mutable self: *T)
 }
 </code></pre>
 
@@ -1421,6 +1438,7 @@ keywords        : <b>app</b>
                 | <b>invariant</b>
                 | <b>is</b>
                 | <b>mutable</b>
+                | <b>later</b>
                 | <b>lib</b>
                 | <b>range</b>
                 | <b>require</b>
@@ -1580,6 +1598,8 @@ break-stmt : <b>break</b> expr?
 
 return-stmt : <b>return</b> expr?
 
+later-stmt : <b>later</b> expr
+
 assignment-stmt : expr <b>=</b> expr
                 | expr <b>**=</b> expr
                 | expr <b>*=</b> expr
@@ -1613,6 +1633,7 @@ stmt :
      | return-stmt
      | assignment-stmt 
      | expr-stmt
+     | later-stmt
      ) <b>;</b>?
 
 type : single-type ( <b>|</b> single-type )*

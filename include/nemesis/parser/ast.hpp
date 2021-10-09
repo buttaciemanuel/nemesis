@@ -121,6 +121,7 @@ namespace nemesis {
             null_statement,
             expression_statement,
             assignment_statement,
+            later_statement,
             return_statement,
             break_statement,
             continue_statement,
@@ -569,6 +570,45 @@ namespace nemesis {
              * Right expression
              */
             mutable pointer<ast::expression> right_;
+        };
+        /**
+         * Later statement, used to execute code on exit from block
+         */
+        class later_statement : public statement {
+        public:
+            /**
+             * Construct a new return statement object
+             * @param range Range in source code
+             * @param expr Expression for code
+             */
+            later_statement(source_range range, pointer<ast::expression> expr);
+            /**
+             * Destroys the statement object
+             */
+            ~later_statement();
+            /**
+             * @return Reference to the expression, if any
+             */
+            pointer<ast::expression>& expression() const;
+            /**
+             * Accepts a visitor for traversal
+             * @param visitor Generic visitor
+             */
+            void accept(visitor& visitor) const;
+            /**
+             * Clone a statement
+             */
+            pointer<statement> sclone() const { return create<later_statement>(range_, expr_ ? expr_->clone() : nullptr); }
+
+            /**
+             * @return Node kind
+             */
+            ast::kind kind() const { return kind::later_statement; } 
+        private:
+            /**
+             * Returned value, could be null
+             */
+            mutable pointer<ast::expression> expr_;
         };
         /**
          * Simple return statement, for example
@@ -5782,6 +5822,7 @@ namespace nemesis {
             virtual void visit(const null_statement& stmt) {}
             virtual void visit(const expression_statement& stmt) {}
             virtual void visit(const assignment_statement& stmt) {}
+            virtual void visit(const later_statement& stmt) {}
             virtual void visit(const return_statement& stmt) {}
             virtual void visit(const break_statement& stmt) {}
             virtual void visit(const continue_statement& stmt) {}
@@ -5862,6 +5903,7 @@ namespace nemesis {
             virtual void visit(const null_statement& stmt);
             virtual void visit(const expression_statement& stmt);
             virtual void visit(const assignment_statement& stmt);
+            virtual void visit(const later_statement& stmt);
             virtual void visit(const return_statement& stmt);
             virtual void visit(const break_statement& stmt);
             virtual void visit(const continue_statement& stmt);

@@ -2,8 +2,11 @@
 #define __CORE_H__
 
 #include <complex>
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -51,6 +54,7 @@ void __crash(std::string message, const char* file = nullptr, int line = 0, int 
 void __assert(bool condition, std::string message, const char* file = nullptr, int line = 0, int column = 0);
 void __exit(std::int32_t code);
 void __stacktrace();
+void __signal_handler(int signo);
 
 class __chars_iterator {
 public:
@@ -278,6 +282,14 @@ struct __lambda {
     __lambda() = default;
     virtual ~__lambda() {}
     virtual Result operator()(Args... args) = 0;
+};
+
+class __later {
+public:
+    __later(std::function<void()> callback) : callback_(callback) {}
+    ~__later() { callback_(); }
+private:
+    std::function<void()> callback_;
 };
 
 template<typename T>

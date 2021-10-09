@@ -61,3 +61,15 @@ concept(T) printable {
 concept(T) indexable {
     function(I, R) at(self: T, index: I) R
 }
+
+// this is the concept for cloneable object
+// called automatically on copy
+concept(T) cloneable {
+    clone(self: T) T
+}
+
+// this is the concept for destructible object
+// note that `destroy` is automatically called when the object goes out of scope
+concept(T) destructible {
+    destroy(mutable self: *T)
+}

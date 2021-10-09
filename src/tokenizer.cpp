@@ -198,6 +198,7 @@ namespace nemesis {
             { utf8::span("invariant"), token::kind::invariant_kw },
             { utf8::span("is"), token::kind::is_kw },
             { utf8::span("mutable"), token::kind::mutable_kw },
+            { utf8::span("later"), token::kind::later_kw },
             { utf8::span("lib"), token::kind::lib_kw },
             { utf8::span("range"), token::kind::range_kw },
             { utf8::span("require"), token::kind::require_kw },
