@@ -5740,6 +5740,10 @@ namespace nemesis {
              */
             std::unordered_map<const ast::function_expression*, std::size_t> lambdas;
             /**
+             * List of tests in the same order of declaration
+             */
+            std::vector<const ast::test_declaration*> tests;
+            /**
              * Tells if workspace is builtin
              */
             bool builtin = false;

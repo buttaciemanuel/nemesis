@@ -40,15 +40,20 @@ namespace nemesis {
                     else exported.stream() << "struct " << emit(type) << ";\n";
                 }
                 // forward function declarations
-                for (auto fndecl : workspace.second->functions) if (!fndecl->generic()) exported.stream() << prototype(fndecl) << ";\n";
+                for (auto fndecl : workspace.second->functions) {
+                    if (fndecl->generic() || (checker_.compilation().test() && fndecl == checker_.entry_point())) continue;
+                    exported.stream() << prototype(fndecl) << ";\n";
+                }
                 // forward lambda type declarations
                 for (auto lambda : workspace.second->lambdas) exported.stream() << "struct __lambda" << lambda.second << ";\n";
+                // forward test declaration
+                if (checker_.compilation().test()) for (auto test : workspace.second->tests) exported.stream() << prototype(test) << ";\n";
             }
         }
         // adds exported header file to targets
         targets.push_front({ "__exported.h", exported.stream().str(), true });
 
-        std::cout << "--- __exported.h ---\n" << exported.stream().str() << '\n';
+        //std::cout << "--- __exported.h ---\n" << exported.stream().str() << '\n';
 
         // for each workspace it generates a new C++ file to compile if workspace's package is not set as builtin
         for (auto workspace : checker_.compilation().workspaces()) {
@@ -83,11 +88,36 @@ namespace nemesis {
             for (auto valuedecl : workspace.second->globals) valuedecl->accept(*this);
             // function definitions
             output_.stream() << "/* Function definitions */\n";
-            for (auto fndecl : workspace.second->functions) if (!fndecl->generic()) fndecl->accept(*this);
+            for (auto fndecl : workspace.second->functions) {
+                if (fndecl->generic() || (checker_.compilation().test() && fndecl == checker_.entry_point())) continue;
+                fndecl->accept(*this);
+            }
+            // tests definitions
+            if (checker_.compilation().test()) {
+                output_.stream() << "/* Tests definitions */\n";
+                for (auto testdecl : workspace.second->tests) testdecl->accept(*this);
+            }
             // adds new cpp file to targets list
             targets.push_back({ target, output_.stream().str() });
 
             std::cout << "---" << workspace.first << ".cpp---\n" << output_.stream().str() << '\n';
+        }
+        // test mode, generates a new executable containing tests
+        if (checker_.compilation().test()) {
+            // definition of tests
+            pass_ = pass::define;
+            // we are not inside any library or app currently
+            workspace_ = nullptr;
+            // test target name
+            std::string target = "test" + std::to_string(std::rand()) + ".cpp";
+            // constructs a new file stream
+            output_ = filestream(target);
+            // include public header
+            output_.stream() << "#include \"__exported.h\"\n";
+            // emit all tests
+            emit_tests();
+            // appends new file for testing
+            targets.push_back({ target, output_.stream().str() });
         }
         // yields cpp targets list
         return targets;
@@ -595,6 +625,38 @@ namespace nemesis {
         // instantiate (heap) lambdas vector
         output_.line() << "std::vector<std::unique_ptr<__lambda" << id << ">> __lambda" << id << "::__lambdas;\n";
     }
+
+    void code_generator::emit_tests()
+    {
+        output_.line() << "int main() {\n";
+        {
+            struct guard inner(output_);
+            // signal handlers
+            output_.line() << "std::signal(SIGABRT, __signal_handler);\n";
+            output_.line() << "std::signal(SIGQUIT, __signal_handler);\n";
+            output_.line() << "std::signal(SIGINT, __signal_handler);\n";
+            output_.line() << "std::signal(SIGFPE, __signal_handler);\n";
+            output_.line() << "std::signal(SIGKILL, __signal_handler);\n";
+            output_.line() << "std::signal(SIGSEGV, __signal_handler);\n";
+            // emits count of total tests and count of passed tests
+            output_.line() << "std::size_t __total = 0, __passed = 0;\n";
+            // for each workspace, it emits its tests
+            for (auto workspace : checker_.compilation().workspaces()) {
+                // sets current library
+                workspace_ = workspace.second;
+                // for each test, it calls associated function and test if it has success or not
+                for (auto test : workspace.second->tests) {
+                    // increment number of total tests
+                    output_.line() << "++__total;\n";
+                    output_.line() << "__passed += " << fullname(test) << "();\n";
+                }
+            }
+            // reports of passed tests
+            output_.line() << "if (__total > 0) { std::printf(\"• you passed %lu out of %lu tests! %s\\n\", __passed, __total, __passed < (float) __total / 2 ? \"You could have done better, try again, pal. 😑\" : \"Not bad! 💪\"); }\n";
+            output_.line() << "return !(__total == __passed);\n";
+        }
+        output_.line() << "}\n";
+    }
     
     std::string code_generator::fullname(const ast::declaration *decl) const
     {
@@ -620,6 +682,9 @@ namespace nemesis {
                     // property name scope is added only if it is the property full name to be resolved
                     if (!levels.empty()) done = true;
                     else levels.push(static_cast<const ast::property_declaration*>(decl)->name().lexeme().string());
+                    break;
+                case ast::kind::test_declaration:
+                    levels.push(static_cast<const ast::test_declaration*>(decl)->name().lexeme().string());
                     break;
                 case ast::kind::concept_declaration:
                     levels.push(static_cast<const ast::concept_declaration*>(decl)->name().lexeme().string());
@@ -1272,7 +1337,8 @@ namespace nemesis {
 
     void code_generator::visit(const ast::function_declaration& decl)
     {
-        if (decl.generic()) return;
+        // exit if function is generic (so it must not be generated) or if it's main entry point and test mode is set
+        if (decl.generic() || (&decl == checker_.entry_point() && checker_.compilation().test())) return;
 
         guard guard(output_);
         auto fntype = std::static_pointer_cast<ast::function_type>(decl.annotation().type);
@@ -1299,6 +1365,7 @@ namespace nemesis {
                 output_.line() << "std::signal(SIGINT, __signal_handler);\n";
                 output_.line() << "std::signal(SIGFPE, __signal_handler);\n";
                 output_.line() << "std::signal(SIGKILL, __signal_handler);\n";
+                output_.line() << "std::signal(SIGSEGV, __signal_handler);\n";
                 output_.line() << "std::vector<__chars> __args_buffer((std::size_t) __argc);\n";
                 output_.line() << "for (auto i = 0; i < __argc; ++i) __args_buffer[i] = __chars(__argv[i]);\n";
                 output_.line();
@@ -1403,6 +1470,26 @@ namespace nemesis {
             output_.line() << "}\n";
         }
         else output_.stream() << ";\n";
+    }
+
+    std::string code_generator::prototype(const ast::test_declaration* decl) const { return "int " + fullname(decl) + "()"; }
+
+    void code_generator::visit(const ast::test_declaration& decl)
+    {
+        output_.line() << prototype(&decl) << " try {\n";
+        {
+            struct guard inner(output_);
+            // stack activation record for stacktrace
+            output_.stream() << "#if __DEVELOPMENT__\n";
+            output_.line() << "__stack_activation_record __record(\"" << decl.range().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
+            output_.stream() << "#endif\n";
+            output_.line() << "std::printf(\"• running test '" << decl.name().lexeme() << "'...\\n\");\n";
+            decl.body()->accept(*this);
+            output_.line() << "std::printf(\"• success for '" << decl.name().lexeme() << "', pal!\\n\");\n";
+            output_.line() << "return 1;\n";
+        }
+        output_.line() << "}\n";
+        output_.line() << "catch (...) { std::printf(\"• failure for '" << decl.name().lexeme() << "', f*ck...\\n\"); return 0; }\n";
     }
 
     bool code_generator::emit_if_constant(const ast::expression& expr)

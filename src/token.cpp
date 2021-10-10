@@ -132,6 +132,7 @@ namespace nemesis {
             case token::kind::in_kw:
             case token::kind::is_kw:
             case token::kind::mutable_kw:
+            case token::kind::later_kw:
             case token::kind::lib_kw:
             case token::kind::range_kw:
             case token::kind::return_kw:
@@ -302,6 +303,7 @@ namespace nemesis {
                 case token::kind::invariant_kw: return "invariant_kw";
                 case token::kind::is_kw: return "is_kw";
                 case token::kind::mutable_kw: return "mutable_kw";
+                case token::kind::later_kw: return "later_kw";
                 case token::kind::lib_kw: return "lib_kw";
                 case token::kind::range_kw: return "range_kw";
                 case token::kind::return_kw: return "return_kw";

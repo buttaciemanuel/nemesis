@@ -1484,6 +1484,9 @@ namespace nemesis {
                     if (!levels.empty()) done = true;
                     else levels.push(static_cast<const ast::property_declaration*>(decl)->name().lexeme().string());
                     break;
+                case ast::kind::test_declaration:
+                    levels.push(static_cast<const ast::test_declaration*>(decl)->name().lexeme().string());
+                    break;
                 case ast::kind::concept_declaration:
                     levels.push(static_cast<const ast::concept_declaration*>(decl)->name().lexeme().string());
                     break;
@@ -10377,7 +10380,31 @@ namespace nemesis {
 
     void checker::visit(const ast::test_declaration& decl) 
     {
-        decl.body()->accept(*this); 
+        decl.annotation().visited = true;
+        // current workspace
+        auto workspace = this->workspace();
+        // check if workspace name is unique within workspace context
+        auto other = std::find_if(workspace->tests.begin(), workspace->tests.end(), [&] (const ast::test_declaration* test) { return test->name().lexeme() == decl.name().lexeme(); });
+        if (other != workspace->tests.end()) {
+            auto diag = diagnostic::builder()
+                        .location(decl.name().location())
+                        .severity(diagnostic::severity::error)
+                        .message(diagnostic::format("You have already declared a test named `$`, idiot!", decl.name().lexeme()))
+                        .highlight(decl.name().range(), "conflicting")
+                        .note((*other)->name().range(), "Here's the homonymous declaration, you f*cker!")
+                        .build();
+            
+            publisher().publish(diag);
+        }
+        else {
+            // traverse body
+            decl.body()->accept(*this);
+            // add tests to list of test of this workspace
+            workspace->tests.push_back(&decl);
+        }
+        // resolved fully
+        decl.annotation().resolved = true;
+        decl.annotation().scope = workspace;
     }
 
     void checker::visit(const ast::function_declaration& decl) 

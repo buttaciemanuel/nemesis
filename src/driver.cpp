@@ -100,7 +100,7 @@ namespace nemesis {
     {
         // first of all it parses command
         if (argc == 1) {
-            error("You can't invoke Nemesis compiler without any command, b*tch!");
+            error("you can't invoke Nemesis compiler without any command, b*tch!");
             exit_code_ = impl::exit::failure;
         }
         else if (std::strcmp("init", argv[1]) == 0) command_ = command::initialize;
@@ -153,19 +153,19 @@ namespace nemesis {
             case command::run:
             case command::test:
                 if (count > 0) {
-                    error("This command does not expect arguments, you gave `$`, idiot.", count);
+                    error("this command does not expect arguments, you gave `$`, idiot.", count);
                     exit_code_ = impl::exit::failure;
                 }
                 break;
             case command::add:
                 if (count == 0 || count > 2) {
-                    error("This command expects `1` or `2` arguments, you gave `$`, idiot.", count);
+                    error("this command expects `1` or `2` arguments, you gave `$`, idiot.", count);
                     exit_code_ = impl::exit::failure;
                 }
                 break;
             case command::remove:
                 if (count != 1) {
-                    error("This command expects `2` arguments, you gave `$`, idiot.", count);
+                    error("this command expects `2` arguments, you gave `$`, idiot.", count);
                     exit_code_ = impl::exit::failure;
                 }
                 break;
@@ -198,15 +198,15 @@ namespace nemesis {
         if (exit_code_ != impl::exit::success) message(usage);
         // command has been invoked correctly so it is executed
         else if (command_ == command::initialize) init();
-        else if (command_ == command::build) build();
+        else if (command_ == command::build || command_ == command::test) build();
         else if (command_ == command::clean) clean();
         else if (command_ == command::add) add();
         else if (command_ == command::remove) remove();
         else throw std::invalid_argument("command not yet implemented");
 
-        if (exit_code_ == impl::exit::success) message("Success! All went fine. Happy coding, brother! 🤟");
+        if (exit_code_ == impl::exit::success) message("success! All went fine. Happy coding, brother! 🤟");
         else if (exit_code_ == impl::exit::failure) {
-            message("F*ck... I couldn't do anything to save you from failure. 😭");
+            message("f*ck... I couldn't do anything to save you from failure. 😭");
             // on failure restore previous manifest file if changed
             //pm::manager::instance(diagnostic_publisher_, source_handler_).restore();
         }
@@ -223,8 +223,8 @@ namespace nemesis {
     void driver::init()
     {
         char input;
-        message("Welcome to the Nemesis gang, brother!");
-        message("Now I'm gonna ask you some questions before we get started...");
+        message("welcome to the Nemesis gang, brother!");
+        message("how I'm gonna ask you some questions before we get started...");
         // error code for file system operations
         std::error_code code;
         // first of all tests if there is any configuration present
@@ -233,18 +233,18 @@ namespace nemesis {
             while (input != 'y' && input != 'n' && input != 'Y' && input != 'N');
             // if user wants to preserve previous configuration, then we can exit now
             if (input == 'y' || input == 'Y') {
-                message("Good then, don't forget to place your Nemesis source files inside `$` directory and C++ files inside `$` directory", pm::manager::sources_path, pm::manager::cpp_sources_path);
+                message("good then, don't forget to place your Nemesis source files inside `$` directory and C++ files inside `$` directory", pm::manager::sources_path, pm::manager::cpp_sources_path);
                 return;
             }
         }
         // application or library choice
-        do { question("Are you gonna develop an application? If no, I assume you're gonna build a library. (y/n)", input); }
+        do { question("are you gonna develop an application? If no, I assume you're gonna build a library. (y/n)", input); }
         while (input != 'y' && input != 'n' && input != 'Y' && input != 'N');
         // user chooses application
         if (input == 'y' || input == 'Y') {
             std::string name;
             // asks info about name
-            do { question("How are you gonna name your application?", name); }
+            do { question("how are you gonna name your application?", name); }
             while (!pm::is_valid_package_name(name));
             // creates manifest file
             std::ofstream manifest(pm::manager::manifest_path);
@@ -271,10 +271,10 @@ namespace nemesis {
         else {
             std::string name, version;
             // asks info about name
-            do { question("How are you gonna name your library?", name); }
+            do { question("how are you gonna name your library?", name); }
             while (!pm::is_valid_package_name(name));
             // asks info about version
-            do { question("Which version are you building?", version); }
+            do { question("which version are you building?", version); }
             while (!pm::is_valid_package_version(version));
             // creates manifest file
             std::ofstream manifest(pm::manager::manifest_path);
@@ -295,7 +295,7 @@ namespace nemesis {
         std::filesystem::create_directory(pm::manager::cpp_sources_path, code);
         std::filesystem::create_directory(pm::manager::dependencies_path, code);
         // exits
-        message("Good then, don't forget to place your Nemesis source files inside `$` directory and C++ files inside `$` directory", pm::manager::sources_path, pm::manager::cpp_sources_path);
+        message("good then, don't forget to place your Nemesis source files inside `$` directory and C++ files inside `$` directory", pm::manager::sources_path, pm::manager::cpp_sources_path);
     }
 
     void driver::build() 
@@ -307,13 +307,13 @@ namespace nemesis {
         // first checks if workspace is properly initialized
         if (!std::filesystem::exists(pm::manager::manifest_path, code) || !std::filesystem::exists(pm::manager::sources_path, code)) {
             error("it looks like you haven't properly initialized your workspace, dammit!");
-            message("Try running `$ init` to configure your application or library, brother. See you soon!", pathname_);
+            message("try running `$ init` to configure your application or library, brother. See you soon!", pathname_);
             exit_code_ = impl::exit::failure;
             return;
         }
         // retrieve information from current manifest file
         pm::manifest manifest;
-        message("Reading information from `nemesis.manifest`...");
+        message("reading information from `nemesis.manifest`...");
         // operation may fail, so entire compilation fails then
         try {
             manifest = manager.parse_manifest_file(pm::manager::manifest_path);
@@ -329,7 +329,7 @@ namespace nemesis {
         // check if it exists
         if (std::filesystem::exists(pm::manager::lock_path)) {
             // retrieve information from current lock file
-            message("Reading information from `$`...", pm::manager::lock_path);
+            message("reading information from `$`...", pm::manager::lock_path);
             // operation may fail, so entire compilation fails then
             try {
                 lock = manager.parse_lock_file(pm::manager::lock_path);
@@ -341,7 +341,7 @@ namespace nemesis {
         }
         else {
             // generates lock file from manifest file
-            message("Generating `$`...", pm::manager::lock_path);
+            message("generating `$`...", pm::manager::lock_path);
             // operation may fail, so entire compilation fails then
             try {
                 // generation requires building the dependency tree
@@ -353,7 +353,7 @@ namespace nemesis {
             }
         }
         // building starts with information
-        message("Let's build your $`$`...", manifest.kind == pm::manifest::kind::app ? "application " : manifest.kind == pm::manifest::kind::lib ? "library " : "", manifest.name);
+        message("let's build your $`$`...", manifest.kind == pm::manifest::kind::app ? "application " : manifest.kind == pm::manifest::kind::lib ? "library " : "", manifest.name);
         // constructs compilation from lock file
         auto compilation = manager.build_compilation_chain(lock);
         // compile sources following compilation chain
@@ -383,13 +383,13 @@ namespace nemesis {
         // first checks if workspace is properly initialized
         if (!std::filesystem::exists(pm::manager::manifest_path, code) || !std::filesystem::exists(pm::manager::sources_path, code)) {
             error("it looks like you haven't properly initialized your workspace, dammit!");
-            message("Try running `$ init` to configure your application or library, brother. See you soon!", pathname_);
+            message("try running `$ init` to configure your application or library, brother. See you soon!", pathname_);
             exit_code_ = impl::exit::failure;
             return;
         }
         // retrieve information from current manifest file
         pm::manifest manifest;
-        message("Reading information from `nemesis.manifest`...");
+        message("reading information from `nemesis.manifest`...");
         // operation may fail, so entire compilation fails then
         try {
             manifest = manager.parse_manifest_file(pm::manager::manifest_path);
@@ -405,7 +405,7 @@ namespace nemesis {
         // otherwise
         else lock = manager.add_dependency(manifest, pm::manager::lock_path, arguments_[0]);
         // building starts with information
-        message("Let's build your $`$`...", manifest.kind == pm::manifest::kind::app ? "application " : manifest.kind == pm::manifest::kind::lib ? "library " : "", manifest.name);
+        message("let's build your $`$`...", manifest.kind == pm::manifest::kind::app ? "application " : manifest.kind == pm::manifest::kind::lib ? "library " : "", manifest.name);
         // constructs compilation from lock file
         auto compilation = manager.build_compilation_chain(lock);
         // compile sources following compilation chain
@@ -421,13 +421,13 @@ namespace nemesis {
         // first checks if workspace is properly initialized
         if (!std::filesystem::exists(pm::manager::manifest_path, code) || !std::filesystem::exists(pm::manager::sources_path, code)) {
             error("it looks like you haven't properly initialized your workspace, dammit!");
-            message("Try running `$ init` to configure your application or library, brother. See you soon!", pathname_);
+            message("try running `$ init` to configure your application or library, brother. See you soon!", pathname_);
             exit_code_ = impl::exit::failure;
             return;
         }
         // retrieve information from current manifest file
         pm::manifest manifest;
-        message("Reading information from `nemesis.manifest`...");
+        message("reading information from `nemesis.manifest`...");
         // operation may fail, so entire compilation fails then
         try {
             manifest = manager.parse_manifest_file(pm::manager::manifest_path);
@@ -439,13 +439,13 @@ namespace nemesis {
         // tries to remove dependency and generates new lock file
         pm::lock lock = manager.remove_dependency(manifest, pm::manager::lock_path, arguments_[0]);
         // building starts with information
-        message("Let's build your $`$`...", manifest.kind == pm::manifest::kind::app ? "application " : manifest.kind == pm::manifest::kind::lib ? "library " : "", manifest.name);
+        message("let's build your $`$`...", manifest.kind == pm::manifest::kind::app ? "application " : manifest.kind == pm::manifest::kind::lib ? "library " : "", manifest.name);
         // constructs compilation from lock file
         auto compilation = manager.build_compilation_chain(lock);
         // compile sources following compilation chain
         compile(compilation);
     }
-    
+
     void driver::compile(class compilation& compilation)
     {
         // for each source file
@@ -485,6 +485,8 @@ namespace nemesis {
         code_generator codegen(checker);
         // trace option will slow down resulting program
         codegen.trace(options_.is(options::kind::trace));
+        // test mode will generate test main entry point instead of normal entry point
+        compilation.test(command_ == command::test);
         // generation is launched
         auto targets = codegen.generate();
         // now compile all targets files and cpp source files to cpp files

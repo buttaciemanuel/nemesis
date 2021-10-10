@@ -333,6 +333,8 @@ private:
 
 struct __none {};
 
+struct __test_failure { int code; };
+
 template<typename T> __slice<T> __allocate(std::size_t n) try { 
     return __slice<T>(new T[n], n); 
 }

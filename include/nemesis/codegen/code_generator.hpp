@@ -18,6 +18,7 @@ namespace nemesis {
         std::string prototype(const ast::type_declaration* decl) const;
         std::string prototype(const ast::function_declaration* decl) const;
         std::string prototype(const ast::property_declaration* decl) const;
+        std::string prototype(const ast::test_declaration* decl) const;
         std::string fullname(const ast::declaration *decl) const;
     private:
         struct guard;
@@ -53,6 +54,7 @@ namespace nemesis {
         void emit_lambda_type(const ast::function_expression* lambda);
         void emit_in_contracts(const ast::node& current);
         void emit_out_contracts(const ast::node& current);
+        void emit_tests();
 
         void visit(const ast::bit_field_type_expression& expr);
         void visit(const ast::path_type_expression& expr);
@@ -109,6 +111,7 @@ namespace nemesis {
         void visit(const ast::range_declaration& decl);
         void visit(const ast::record_declaration& decl);
         void visit(const ast::variant_declaration& decl);
+        void visit(const ast::test_declaration& decl);
         /**
          * Semantic checker contains all information produced by previous analysis
          */

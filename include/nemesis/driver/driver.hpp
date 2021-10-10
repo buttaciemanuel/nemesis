@@ -206,7 +206,7 @@ namespace nemesis {
          */
         void build();
         /**
-         * Executes `clean` command inside current workspace
+         * Executes `clean` or `test` command inside current workspace
          */
         void clean();
         /**
