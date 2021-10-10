@@ -3173,7 +3173,7 @@ namespace nemesis {
                             
                             for (auto t : sub.types()) map.emplace(t.first, impl::parameter::make_type(t.second));
                             for (auto v : sub.constants()) map.emplace(v.first, impl::parameter::make_value(v.second));
-                            for (size_t i = 0; i < expected->parameters().size(); ++i) {
+                            for (size_t i = 0; !mistake && i < expected->parameters().size(); ++i) {
                                 if (auto constparam = dynamic_cast<const ast::generic_const_parameter_declaration*>(expr.generics().at(i)->annotation().referencing)) {
                                     impl::parameter parametric;
                                     parametric.kind = impl::parameter::kind::value;
@@ -6268,6 +6268,18 @@ namespace nemesis {
 
         if (auto array_type = std::dynamic_pointer_cast<ast::array_type>(expr.expression()->annotation().type)) base = array_type->base();
         else if (auto slice_type = std::dynamic_pointer_cast<ast::slice_type>(expr.expression()->annotation().type)) base = slice_type->base();
+        else if (auto pointer_type = std::dynamic_pointer_cast<ast::pointer_type>(expr.expression()->annotation().type)) {
+            base = pointer_type->base();
+            auto diag = diagnostic::builder()
+                        .severity(diagnostic::severity::warning)
+                        .location(expr.index()->range().begin())
+                        .message(diagnostic::format("Indexing a pointer of type `$` may crash at run-time!", expr.expression()->annotation().type->string()))
+                        .highlight(expr.index()->range())
+                        .highlight(expr.expression()->range(), diagnostic::highlighter::mode::light)
+                        .build();
+                
+            publisher().publish(diag);
+        }
         else if (auto index_procedure = is_indexable(expr.expression()->annotation().type)) {
             if (!types::assignment_compatible(index_procedure->parameters().back()->annotation().type, expr.index()->annotation().type)) {
                 auto diag = diagnostic::builder()
@@ -6629,7 +6641,7 @@ namespace nemesis {
                 }
                 break;
             case token::kind::amp:
-                if (!expr.expression()->lvalue()) {
+                if (!expr.expression()->lvalue() && expr.expression()->kind() != ast::kind::array_index_expression && expr.expression()->kind() != ast::kind::tuple_index_expression) {
                     expr.invalid(true);
                     expr.annotation().type = types::unknown();
                     error(expr, diagnostic::format("You cannot take the address of a temporary object of type `$`, idiot!", rtype->string()), "", "expected lvalue");
@@ -9701,7 +9713,7 @@ namespace nemesis {
                 if (loop->body()) {
                     if (loop->body()->annotation().type && loop->body()->annotation().type->category() != ast::type::category::unknown_type) expected = loop->body()->annotation().type;
                     else {
-                        loop->body()->annotation().type = stmt.expression()->annotation().type;
+                        loop->body()->annotation().type = stmt.expression() ? stmt.expression()->annotation().type : types::unit();
                         std::static_pointer_cast<ast::block_expression>(loop->body())->exprnode() = &stmt;
                     }
                 }

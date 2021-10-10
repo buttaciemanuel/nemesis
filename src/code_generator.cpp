@@ -1703,6 +1703,10 @@ namespace nemesis {
                             expr.left()->accept(*this);
                             output_.stream() << ".data()";
                         }
+                        else {
+                            output_.stream() << "(" << emit(result) << ") ";
+                            expr.left()->accept(*this);
+                        }
                         break;
                     case ast::type::category::slice_type:
                         // conversion from array to slice
@@ -1710,6 +1714,10 @@ namespace nemesis {
                             output_.stream() << "__slice<" << emit(std::static_pointer_cast<ast::slice_type>(result)->base()) << ">(";
                             expr.left()->accept(*this);
                             output_.stream() << ", " << std::static_pointer_cast<ast::array_type>(original)->size() << "ull)";
+                        }
+                        else {
+                            output_.stream() << "(" << emit(result) << ") ";
+                            expr.left()->accept(*this);
                         }
                         break;
                     default:
@@ -1787,15 +1795,16 @@ namespace nemesis {
             // builtin functions
             else if (auto fn = dynamic_cast<const ast::function_declaration*>(expr.annotation().referencing)) {
                 // strips name from generic arguments
-                auto non_generic_name = fn->name().lexeme().string();
+                auto non_generic_name = checker_.fullname(fn);
                 auto first = non_generic_name.find_first_of('(');
                 auto last = non_generic_name.find_last_of(')');
                 if (first != std::string::npos && last != std::string::npos) non_generic_name.erase(first, last);
                 // test name against builtin functions
-                if (non_generic_name == "allocate") output_.stream() << "__allocate<" << emit(expr.generics().front()->annotation().type) << ">";
-                else if (non_generic_name == "deallocate") output_.stream() << "__deallocate";
-                else if (non_generic_name == "free") output_.stream() << "__free";
-                else if (non_generic_name == "sizeof") output_.stream() << "__sizeof<" << emit(expr.generics().front()->annotation().type) << ">";
+                std::cout << expr.identifier() << '\n';
+                if (non_generic_name == "core.allocate") output_.stream() << "__allocate<" << emit(expr.generics().front()->annotation().type) << ">";
+                else if (non_generic_name == "core.deallocate") output_.stream() << "__deallocate";
+                else if (non_generic_name == "core.free") output_.stream() << "__free";
+                else if (non_generic_name == "core.sizeof") output_.stream() << "__sizeof<" << emit(expr.generics().front()->annotation().type) << ">";
                 else output_.stream() << fullname(expr.annotation().referencing);
             }
             else output_.stream() << fullname(expr.annotation().referencing);
@@ -2235,10 +2244,8 @@ namespace nemesis {
                         stmt->accept(*this);
                         break;
                     default:
-                        // if expression statement has no type, its result is not saved to be returned
-                        if (types::compatible(types::unit(), value->annotation().type)) stmt->accept(*this);
                         // save results only if its type is not (), which is 'void' in C/C++
-                        else if (!result_vars.empty()) {
+                        if (!result_vars.empty() && !types::compatible(types::unit(), value->annotation().type)) {
                             output_.stream() << "#if __DEVELOPMENT__\n";
                             output_.line() << "__record.location(" << stmt->range().bline << ", " << stmt->range().bcolumn << ");\n";
                             output_.stream() << "#endif\n";
@@ -2246,6 +2253,7 @@ namespace nemesis {
                             value->accept(*this);
                             output_.stream() << ";\n";
                         }
+                        else stmt->accept(*this);
                         break;
                 }
             }

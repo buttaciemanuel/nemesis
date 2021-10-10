@@ -24,14 +24,14 @@ namespace nemesis {
 
         bool bit_field_type_expression::is_parametric() const 
         {
-            if (annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
+            if (!annotation_.type || annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
 
             return false; 
         }
 
         bool path_type_expression::is_parametric() const
         {
-            if (annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
+            if (!annotation_.type || annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
             if (annotation_.isparametric) return true;
             else if (!annotation_.istype) return false;
             
@@ -67,14 +67,14 @@ namespace nemesis {
 
         bool array_type_expression::is_parametric() const
         {
-            if (annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
+            if (!annotation_.type || annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
             
             return std::static_pointer_cast<ast::type_expression>(element_type_)->is_parametric();
         }
 
         bool tuple_type_expression::is_parametric() const
         {
-            if (annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
+            if (!annotation_.type || annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
 
             for (auto param : types_) {
                 if (auto tparam = std::dynamic_pointer_cast<ast::type_expression>(param)) {
@@ -87,7 +87,7 @@ namespace nemesis {
 
         bool record_type_expression::is_parametric() const
         {
-            if (annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
+            if (!annotation_.type || annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
 
             for (auto f : fields_) {
                 if (auto tfield = std::dynamic_pointer_cast<ast::tuple_field_declaration>(f)) {
@@ -103,7 +103,7 @@ namespace nemesis {
 
         bool function_type_expression::is_parametric() const
         {
-            if (annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
+            if (!annotation_.type || annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
 
             for (auto tparam : parameter_types_) {
                 if (std::static_pointer_cast<ast::type_expression>(tparam)->is_parametric()) return true;
@@ -124,14 +124,14 @@ namespace nemesis {
 
         bool pointer_type_expression::is_parametric() const
         {
-            if (annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
+            if (!annotation_.type || annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
 
             return std::static_pointer_cast<ast::type_expression>(pointee_type_)->is_parametric();   
         }
 
         bool variant_type_expression::is_parametric() const
         {
-            if (annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
+            if (!annotation_.type || annotation_.type->category() == ast::type::category::generic_type || annotation_.type->category() == ast::type::category::unknown_type) return true;
 
             for (auto param : types_) {
                 if (auto tparam = std::dynamic_pointer_cast<ast::type_expression>(param)) {
