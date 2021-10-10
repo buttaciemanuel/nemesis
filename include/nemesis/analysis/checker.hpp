@@ -122,6 +122,7 @@ namespace nemesis {
         void test_immutable_assignment(const ast::var_declaration& decl, const ast::expression& value) const;
         void test_immutable_assignment(ast::pointer<ast::type> lvalue, const ast::expression& rvalue) const;
         void add_type(ast::pointer<ast::type> type);
+        void add_function(const ast::function_declaration* fn);
         ast::pointer<ast::var_declaration> create_temporary_var(const ast::expression& value) const;
 
         void visit(const ast::bit_field_type_expression& expr);

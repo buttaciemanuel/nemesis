@@ -337,7 +337,6 @@ namespace nemesis {
         std::ostringstream oss;
         auto builder = token::builder();
         auto context = subs.context();
-
         oss << tdecl.name().lexeme();
 
         if (auto clause = std::dynamic_pointer_cast<ast::generic_clause_declaration>(tdecl.generic())) {
@@ -1023,6 +1022,14 @@ namespace nemesis {
         // if anonymous types was not found, it is added to anonymous types list
         if (std::count_if(workspace->types.begin(), workspace->types.end(), [&] (ast::pointer<ast::type> x) { return types::compatible(x, type); }) == 0) {
             workspace->types.push_back(type);
+        }
+    }
+
+    void checker::add_function(const ast::function_declaration* fn)
+    {
+        auto workspace = this->workspace();
+        if (std::count_if(workspace->functions.begin(), workspace->functions.end(), [&] (const ast::function_declaration* x) { return fullname(x) == fullname(fn); }) == 0) {
+            workspace->functions.push_back(fn);
         }
     }
 
@@ -1906,7 +1913,8 @@ namespace nemesis {
         // left expression could be a type name inside a member expression
         expr.expression()->annotation().mustvalue = false;
         expr.expression()->annotation().musttype = true;
-        expr.expression()->accept(*this);
+        expr.annotation().type = types::unknown();
+        try { expr.expression()->accept(*this); } catch (cyclic_symbol_error&) { expr.annotation() = expr.expression()->annotation(); throw; }
 
         if (!expr.expression()->annotation().istype) {
             error(expr.expression()->range(), "I was expecting a type here, but I found a value!", "", "expected type");
@@ -1927,38 +1935,38 @@ namespace nemesis {
         std::string item = member->identifier().lexeme().string();
 
         if (auto builtin = types::builtin(expr.expression()->annotation().type->string())) {
-                std::string item = member->identifier().lexeme().string();
-                if (member->is_generic()) error(expr.member()->range(), diagnostic::format("There is no generic function `$` associated to builtin type `$`, idiot!", item, builtin->string()));
+            std::string item = member->identifier().lexeme().string();
+            if (member->is_generic()) error(expr.member()->range(), diagnostic::format("There is no generic function `$` associated to builtin type `$`, idiot!", item, builtin->string()));
 
-                switch (builtin->category()) {
-                    case ast::type::category::integer_type:
-                        if (item == "BITS") expr.annotation().type = types::usize();
-                        else if (item == "MIN") expr.annotation().type = builtin;
-                        else if (item == "MAX") expr.annotation().type = builtin;
-                        else error(expr.member()->range(), diagnostic::format("There is no symbol `$` associated to builtin type `$`, idiot!", item, builtin->string()));
-                        break;
-                    case ast::type::category::rational_type:
-                        if (item == "BITS") expr.annotation().type = types::usize();
-                        else error(expr.member()->range(), diagnostic::format("There is no symbol `$` associated to builtin type `$`, idiot!", item, builtin->string()));
-                        break;
-                    case ast::type::category::float_type:
-                        if (item == "BITS") expr.annotation().type = types::usize();
-                        else if (item == "MIN") expr.annotation().type = builtin;
-                        else if (item == "MAX") expr.annotation().type = builtin;
-                        else if (item == "INFINITY") expr.annotation().type = builtin;
-                        else if (item == "NAN") expr.annotation().type = builtin;
-                        else error(expr.member()->range(), diagnostic::format("There is no symbol `$` associated to builtin type `$`, idiot!", item, builtin->string()));
-                        break;
-                    case ast::type::category::complex_type:
-                        if (item == "BITS") expr.annotation().type = types::usize();
-                        else error(expr.member()->range(), diagnostic::format("There is no symbol `$` associated to builtin type `$`, idiot!", item, builtin->string()));
-                        break;
-                    default:
-                        throw semantic_error();
-                }
-
-                try { expr.annotation().value = evaluate(expr.clone()); } catch (evaluator::generic_evaluation&) {}
+            switch (builtin->category()) {
+                case ast::type::category::integer_type:
+                    if (item == "BITS") expr.annotation().type = types::usize();
+                    else if (item == "MIN") expr.annotation().type = builtin;
+                    else if (item == "MAX") expr.annotation().type = builtin;
+                    else error(expr.member()->range(), diagnostic::format("There is no symbol `$` associated to builtin type `$`, idiot!", item, builtin->string()));
+                    break;
+                case ast::type::category::rational_type:
+                    if (item == "BITS") expr.annotation().type = types::usize();
+                    else error(expr.member()->range(), diagnostic::format("There is no symbol `$` associated to builtin type `$`, idiot!", item, builtin->string()));
+                    break;
+                case ast::type::category::float_type:
+                    if (item == "BITS") expr.annotation().type = types::usize();
+                    else if (item == "MIN") expr.annotation().type = builtin;
+                    else if (item == "MAX") expr.annotation().type = builtin;
+                    else if (item == "INFINITY") expr.annotation().type = builtin;
+                    else if (item == "NAN") expr.annotation().type = builtin;
+                    else error(expr.member()->range(), diagnostic::format("There is no symbol `$` associated to builtin type `$`, idiot!", item, builtin->string()));
+                    break;
+                case ast::type::category::complex_type:
+                    if (item == "BITS") expr.annotation().type = types::usize();
+                    else error(expr.member()->range(), diagnostic::format("There is no symbol `$` associated to builtin type `$`, idiot!", item, builtin->string()));
+                    break;
+                default:
+                    throw semantic_error();
             }
+
+            try { expr.annotation().value = evaluate(expr.clone()); } catch (evaluator::generic_evaluation&) {}
+        }
         else if (!expr.expression()->annotation().type->declaration()) throw std::invalid_argument("visit(member_expression): no declaration, to be implemented " + expr.expression()->annotation().type->string());
         else {
             expr.member()->annotation().mustvalue = false;
@@ -1976,6 +1984,15 @@ namespace nemesis {
         std::string name = expr.identifier().lexeme().string();
         bool mistake = false;
         bool cyclic = false;
+
+        // this is useful for resetting type expressions when cloned and substituted
+        auto copy = ast::create<ast::path_type_expression>(expr.range(), expr.clone(), nullptr);
+        copy->annotation() = expr.annotation();
+        // all annotation is resetted in case of parametric type
+        if (expr.annotation().type && (expr.annotation().istype || expr.annotation().value.type) && copy->is_parametric()) {
+            expr.annotation().type = nullptr;
+            expr.annotation().isparametric = false;
+        }
 
         // annotation may have been done before in substitutions
         if (expr.annotation().type && (expr.annotation().istype || expr.annotation().value.type));
@@ -2315,7 +2332,12 @@ namespace nemesis {
                 }
 
                 if (cyclic) throw cyclic_symbol_error(&expr, typedecl);
-                if (mistake) throw semantic_error();
+
+                if (mistake) {
+                    expr.invalid(true);
+                    expr.annotation().type = types::unknown();
+                    throw semantic_error();
+                }
             }
             else if (auto fn = expr.annotation().associated->function(name)) {
                 expr.annotation().iscallable = true;
@@ -2769,7 +2791,12 @@ namespace nemesis {
                 }
 
                 if (cyclic) throw cyclic_symbol_error(&expr, ct);
-                if (mistake) throw semantic_error();
+                
+                if (mistake) {
+                    expr.invalid(true);
+                    expr.annotation().type = types::unknown();
+                    throw semantic_error();
+                }
             }
             else {
                 std::ostringstream oss;
@@ -3074,6 +3101,7 @@ namespace nemesis {
                             }
                             else if (auto type = std::dynamic_pointer_cast<ast::generic_type_parameter_declaration>(expected->parameters().at(i))) {
                                 expr.generics().at(i)->annotation().mustvalue = false;
+                                expr.generics().at(i)->annotation().isparametric = false;
                                 expr.generics().at(i)->accept(*this);
 
                                 if (!expr.generics().at(i)->annotation().istype) {
@@ -3092,12 +3120,13 @@ namespace nemesis {
                                     if (auto typeexpr = std::dynamic_pointer_cast<ast::type_expression>(expr.generics().at(i))) {
                                         if (typeexpr->is_parametric()) concrete = false;
                                     }
-                                    
+
                                     tsubstitutions.emplace(type.get(), expr.generics().at(i)->annotation().type);
                                     sub.put(type.get(), expr.generics().at(i)->annotation().type);
                                 }
                             }
                         }
+                        
                         // concrete means that a generic type indipendent from any other parametric type so it can be constructed
                         // by monomorphization
                         if (concrete && !mistake) {
@@ -3175,7 +3204,12 @@ namespace nemesis {
                 }
 
                 if (cyclic) throw cyclic_symbol_error(&expr, typedecl);
-                if (mistake) throw semantic_error();
+
+                if (mistake) {
+                    expr.annotation().type = types::unknown();
+                    expr.invalid(true);
+                    throw semantic_error();
+                }
             }
             else if (auto fn = scope_->function(name)) {
                 expr.annotation().iscallable = true;
@@ -3640,7 +3674,12 @@ namespace nemesis {
                 }
 
                 if (cyclic) throw cyclic_symbol_error(&expr, ct);
-                if (mistake) throw semantic_error();
+                
+                if (mistake) {
+                    expr.annotation().type = types::unknown();
+                    expr.invalid(true);
+                    throw semantic_error();
+                }
             }
             else if (!expr.annotation().ispattern) {
                 std::ostringstream oss;
@@ -10536,7 +10575,7 @@ namespace nemesis {
         }
 
         // if not associated function, then it is added to all workspace functions
-        if (!decl.generic() && !dynamic_cast<const ast::type_declaration*>(scope_->enclosing()) && !dynamic_cast<const ast::concept_declaration*>(scope_->enclosing())) workspace()->functions.push_back(&decl);
+        if (!decl.generic() && !dynamic_cast<const ast::type_declaration*>(scope_->enclosing()) && !dynamic_cast<const ast::concept_declaration*>(scope_->enclosing())) add_function(&decl);
     }
 
     void checker::visit(const ast::property_declaration& decl) 
@@ -12345,10 +12384,29 @@ namespace nemesis {
         }
         // second pass
         pass_ = pass::second;
+        
+        // check 'core' library before others
+        {
+            auto core = compilation_.workspaces().at("core").get();
+            // workspace scope
+            struct scope scope(this, core);
+            // sets current package
+            package_ = core->package;
+            // each source file belonging to a workspace is traversed
+            for (auto pair : core->sources) {
+                // sets current file
+                file_ = pair.second;
+                file_->ast()->accept(*this);
+            }
+            // now import core inside other workspace
+            import_core_library_in_workspaces();
+        }        
+
         // for each workspace, type extension block are visited, so
         // i) extended type are resolved
         // ii) associated types and constants' names are registered
         for (auto workspace : compilation_.workspaces()) {
+            if (workspace.first == "core") continue;
             // workspace scope
             struct scope scope(this, workspace.second.get());
             // sets current package
@@ -12361,7 +12419,7 @@ namespace nemesis {
             }
         }
         // for simplicity all name definitions from `core` library don't need to be explicitly imported and referenced with `core` for all other workspaces
-        import_core_library_in_workspaces();
+        // import_core_library_in_workspaces();
         // third pass
         pass_ = pass::third;
         // for each workspace remaining types are fully constructed

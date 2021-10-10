@@ -734,6 +734,7 @@ namespace nemesis {
 
         std::replace_if(name.begin(), name.end(), [](char c) { return c == ' ' || c == '.' || c == '(' || c == ')'; }, '_');
         name = std::regex_replace(name, std::regex(", |,"), "_");
+        name = std::regex_replace(name, std::regex("\\*"), "P");
         
         return name;
     }
@@ -1483,9 +1484,12 @@ namespace nemesis {
             output_.stream() << "#if __DEVELOPMENT__\n";
             output_.line() << "__stack_activation_record __record(\"" << decl.range().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
             output_.stream() << "#endif\n";
+            auto start = "_t" + std::to_string(std::rand()), end = "_t" + std::to_string(std::rand());
             output_.line() << "std::printf(\"• running test '" << decl.name().lexeme() << "'...\\n\");\n";
+            output_.line() << "std::chrono::steady_clock::time_point " << start << " = std::chrono::steady_clock::now();\n";
             decl.body()->accept(*this);
-            output_.line() << "std::printf(\"• success for '" << decl.name().lexeme() << "', pal!\\n\");\n";
+            output_.stream() << "std::chrono::steady_clock::time_point " << end << " = std::chrono::steady_clock::now();\n";
+            output_.line() << "std::printf(\"• success for '" << decl.name().lexeme() << "', pal! It took %lu µs\\n\", std::chrono::duration_cast<std::chrono::microseconds>(" << end << " - " << start << ").count());\n";
             output_.line() << "return 1;\n";
         }
         output_.line() << "}\n";

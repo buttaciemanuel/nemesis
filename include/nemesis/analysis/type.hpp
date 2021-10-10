@@ -97,7 +97,7 @@ namespace nemesis {
                 return nullptr;
             }
             // before is current type wrapped as a smart pointer, while map is a mapping between generic type/value declaration and argument (constval or type)
-            virtual ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const { return before; }
+            virtual ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const { return before; }
             // mutability bit, used only for declarations of variables' types and for return types
             bool mutability : 1;
         protected:
@@ -121,7 +121,7 @@ namespace nemesis {
             ~workspace_type() {}
             std::string string(bool absolute = true) const { return static_cast<const ast::workspace*>(declaration_)->name; }
             enum category category() const { return category::workspace_type; }
-            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const { return before; }
+            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const { return before; }
         };
 
         class generic_type : public type {
@@ -130,8 +130,9 @@ namespace nemesis {
             ~generic_type() {}
             std::string string(bool absolute = true) const { return "$" + static_cast<const ast::generic_type_parameter_declaration*>(declaration_)->name().lexeme().string(); }
             enum category category() const { return category::generic_type; }
-            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
+            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const
             {
+                if (visited.count(before.get())) { return before; } else { visited.insert(before.get()); }
                 if (map.count(declaration_)) return map.at(declaration_).type;
                 return before;
             }
@@ -243,9 +244,10 @@ namespace nemesis {
             }
             enum category category() const { return category::array_type; }
             const ast::generic_const_parameter_declaration*& parametric_size() const { return parametric_size_; }
-            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
+            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const
             {
-                auto base = base_->substitute(base_, map);
+                if (visited.count(before.get())) { return before; } else { visited.insert(before.get()); }
+                auto base = base_->substitute(base_, map, visited);
                 
                 if (parametric_size_ && map.count(parametric_size_)) {
                     auto result = ast::create<ast::array_type>(base, 0);
@@ -280,9 +282,10 @@ namespace nemesis {
             pointer<type> base() const { return base_; }
             std::string string(bool absolute = true) const { return "[" + base_->string() + "]"; }
             enum category category() const { return category::slice_type; }
-            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
+            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const
             {
-                auto base = base_->substitute(base_, map);
+                if (visited.count(before.get())) { return before; } else { visited.insert(before.get()); }
+                auto base = base_->substitute(base_, map, visited);
 
                 if (base_ == base) return before;
 
@@ -317,12 +320,13 @@ namespace nemesis {
                 }
             }
             enum category category() const { return category::tuple_type; }
-            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
+            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const
             {
+                if (visited.count(before.get())) { return before; } else { visited.insert(before.get()); }
                 bool change = false;
                 types components;
                 for (auto old : components_) {
-                    auto component = old->substitute(old, map);
+                    auto component = old->substitute(old, map, visited);
                     if (old != component) change = true;
                     components.push_back(component);
                 }
@@ -345,9 +349,10 @@ namespace nemesis {
             pointer<type> base() const { return base_; }
             std::string string(bool absolute = true) const;
             enum category category() const { return category::pointer_type; }
-            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
+            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const
             {
-                auto base = base_->substitute(base_, map);
+                if (visited.count(before.get())) { return before; } else { visited.insert(before.get()); }
+                auto base = base_->substitute(base_, map, visited);
                 if (base_ == base) return before;
 
                 auto result = ast::create<ast::pointer_type>(base);
@@ -376,9 +381,10 @@ namespace nemesis {
                 return base_->string() + (open_ ? ".." : "..=") + base_->string(); 
             }
             enum category category() const { return category::range_type; }
-            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
+            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const
             {
-                auto base = base_->substitute(base_, map);
+                if (visited.count(before.get())) { return before; } else { visited.insert(before.get()); }
+                auto base = base_->substitute(base_, map, visited);
                 if (base_ == base) return before;
 
                 auto result = ast::create<ast::range_type>(base, open_);
@@ -411,13 +417,14 @@ namespace nemesis {
             }
             enum category category() const { return category::function_type; }
             bool is_lambda() const { return lambda_; }
-            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
+            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const
             {
+                if (visited.count(before.get())) { return before; } else { visited.insert(before.get()); }
                 types formals;
-                auto result = result_->substitute(result_, map);
+                auto result = result_->substitute(result_, map, visited);
                 bool change = result != result_;
                 for (auto old : formals_) {
-                    auto f = old->substitute(old, map);
+                    auto f = old->substitute(old, map, visited);
                     if (old != f) change = true;
                     formals.push_back(f);
                 }
@@ -464,12 +471,13 @@ namespace nemesis {
                 }
             }
             enum category category() const { return category::structure_type; }
-            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
+            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const
             {
+                if (visited.count(before.get())) { return before; } else { visited.insert(before.get()); }
                 bool change = false;
                 components fields;
                 for (auto old : fields_) {
-                    auto t = old.type->substitute(old.type, map);
+                    auto t = old.type->substitute(old.type, map, visited);
                     if (old.type != t) change = true;
                     fields.push_back(component(old.name, t));
                 }
@@ -507,12 +515,13 @@ namespace nemesis {
                 }
             }
             enum category category() const { return category::variant_type; }
-            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map) const
+            ast::pointer<ast::type> substitute(ast::pointer<ast::type> before, std::unordered_map<const ast::declaration*, impl::parameter> map, std::set<const ast::type*> visited = {}) const
             {
+                if (visited.count(before.get())) { return before; } else { visited.insert(before.get()); }
                 bool change = false;
                 ast::types ts;
                 for (auto old : types_) {
-                    auto t = old->substitute(old, map);
+                    auto t = old->substitute(old, map, visited);
                     if (old != t) change = true;
                     ts.push_back(t);
                 }
