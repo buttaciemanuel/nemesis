@@ -14,6 +14,11 @@ namespace nemesis {
     
     std::list<compilation::target> code_generator::generate()
     {
+        // check that if we are compiling an app, there exists an entry point
+        if (!checker_.compilation().test() && checker_.compilation().current().kind == compilation::package::kind::app && !checker_.entry_point()) {
+            checker_.publisher().publish(diagnostic::builder().severity(diagnostic::severity::error).message(diagnostic::format("You cannot compile this `$` app without providing `start` function, idiot. Write your own entry point!", checker_.compilation().current().name)).build());
+            return {};
+        }
         // cpp target files
         std::list<compilation::target> targets;
         // public header will contains all public declarations and headers from `cpp` directories
@@ -1675,6 +1680,14 @@ namespace nemesis {
                     output_.stream() << emit(result) << "(";
                     expr.left()->accept(*this);
                     output_.stream() << ", \"" << expr.range().filename << "\", " << expr.range().bline << ", " << expr.range().bcolumn << ")";
+                }
+                // slice of bytes from string
+                else if ((original->category() == ast::type::category::chars_type || original->category() == ast::type::category::string_type) && types::compatible(types::slice(types::uint(8)), result)) {
+                    output_.stream() << emit(result) << "((std::uint8_t*) ";
+                    expr.left()->accept(*this);
+                    output_.stream() << ".data(), ";
+                    expr.left()->accept(*this);
+                    output_.stream() << ".size())";
                 }
                 else switch (result->category()) {
                     case ast::type::category::chars_type:

@@ -5034,76 +5034,94 @@ namespace nemesis {
                     auto name = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->name() : static_cast<const ast::property_declaration*>(fn)->name();
                     bool mistake = false, concrete = true;
                     substitutions sub(scope_, nullptr);
-
-                    if (auto fndecl = dynamic_cast<const ast::function_declaration*>(fn)) {
-                        if (!fndecl->parameters().empty() && std::dynamic_pointer_cast<ast::parameter_declaration>(fndecl->parameters().back())->is_variadic()) variadic = std::dynamic_pointer_cast<ast::slice_type>(fndecl->parameters().back()->annotation().type)->base();
-                    }
-
-                    if (expr.arguments().size() < fntype->formals().size() - 1 || (expr.arguments().size() > fntype->formals().size() - 1 && !variadic)) {
-                        expr.invalid(true);
-                        expr.annotation().type = types::unknown();
-                        error(expr.callee()->range(), diagnostic::format("This function expects `$` arguments when called as a method but you gave it `$`, pr*ck!", fntype->formals().size() - 1, expr.arguments().size()));
-                    }
-                    // previous analysis were done inside member expression check
-                    // checks if there were provided any generic arguments
-                    if (identifier && identifier->is_generic()) {
-                        // if there were not generic parameters in declaration, then we have an error
-                        if (fn->kind() == ast::kind::property_declaration || !static_cast<const ast::function_declaration*>(fn)->generic()) {
-                            auto diag = diagnostic::builder()
-                                        .severity(diagnostic::severity::error)
-                                        .location(expr.range().begin())
-                                        .message(diagnostic::format("$ `$` doesn't take any generic parameters, idiot!", fn->kind() == ast::kind::function_declaration ? "Function" : "Property", name))
-                                        .highlight(expr.range())
-                                        .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name))
-                                        .build();
-                                
-                            publisher().publish(diag);
-                            mistake = true;
+                    // method
+                    if (scopes_.count(fn->annotation().scope) > 0 && (scopes_[fn->annotation().scope]->outscope(environment::kind::declaration) == member->expression()->annotation().type->declaration() || (member->expression()->annotation().type->category() == ast::type::category::pointer_type && scopes_[fn->annotation().scope]->outscope(environment::kind::declaration) == std::static_pointer_cast<ast::pointer_type>(member->expression()->annotation().type)->base()->declaration()))) {
+                        if (auto fndecl = dynamic_cast<const ast::function_declaration*>(fn)) {
+                            if (!fndecl->parameters().empty() && std::dynamic_pointer_cast<ast::parameter_declaration>(fndecl->parameters().back())->is_variadic()) variadic = std::dynamic_pointer_cast<ast::slice_type>(fndecl->parameters().back()->annotation().type)->base();
                         }
-                        else {
-                            auto expected = std::dynamic_pointer_cast<ast::generic_clause_declaration>(static_cast<const ast::function_declaration*>(fn)->generic());
-                            
-                            if (expected->parameters().size() < identifier->generics().size()) {
+
+                        if (expr.arguments().size() < fntype->formals().size() - 1 || (expr.arguments().size() > fntype->formals().size() - 1 && !variadic)) {
+                            expr.invalid(true);
+                            expr.annotation().type = types::unknown();
+                            error(expr.callee()->range(), diagnostic::format("This function expects `$` arguments when called as a method but you gave it `$`, pr*ck!", fntype->formals().size() - 1, expr.arguments().size()));
+                        }
+                        // previous analysis were done inside member expression check
+                        // checks if there were provided any generic arguments
+                        if (identifier && identifier->is_generic()) {
+                            // if there were not generic parameters in declaration, then we have an error
+                            if (fn->kind() == ast::kind::property_declaration || !static_cast<const ast::function_declaration*>(fn)->generic()) {
                                 auto diag = diagnostic::builder()
                                             .severity(diagnostic::severity::error)
-                                            .location(identifier->range().begin())
-                                            .message(diagnostic::format("$ `$` takes no more than `$` generic parameters, you gave it `$`, idiot!", fn->kind() == ast::kind::function_declaration ? "Function" : "Property", name, expected->parameters().size(), identifier->generics().size()))
-                                            .highlight(identifier->range())
-                                            .note(name.range(), diagnostic::format("As you can see $ `$` was declared with exactly `$` generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name, expected->parameters().size()))
+                                            .location(expr.range().begin())
+                                            .message(diagnostic::format("$ `$` doesn't take any generic parameters, idiot!", fn->kind() == ast::kind::function_declaration ? "Function" : "Property", name))
+                                            .highlight(expr.range())
+                                            .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name))
                                             .build();
-                                
+                                    
                                 publisher().publish(diag);
                                 mistake = true;
                             }
-                            else for (size_t i = 0; i < identifier->generics().size(); ++i)
-                            {
-                                if (auto constant = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(expected->parameters().at(i))) {
-                                    if (auto ambiguous = std::dynamic_pointer_cast<ast::type_expression>(identifier->generics().at(i))) {
-                                        if (ambiguous->is_ambiguous()) {
-                                            auto newexpr = ambiguous->as_expression();
-                                            newexpr->accept(*this);
-                                            identifier->generics().at(i) = newexpr;
-
-                                            if (newexpr->annotation().istype) {
-                                                auto diag = diagnostic::builder()
-                                                    .severity(diagnostic::severity::error)
-                                                    .location(ambiguous->range().begin())
-                                                    .message(diagnostic::format("I need constant value of type `$` but I found type `$` instead, dammit!", constant->annotation().type->string(), newexpr->annotation().type->string()))
-                                                    .highlight(ambiguous->range(), diagnostic::format("expected value", constant->annotation().type->string()))
-                                                    .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
-                                                    .build();
+                            else {
+                                auto expected = std::dynamic_pointer_cast<ast::generic_clause_declaration>(static_cast<const ast::function_declaration*>(fn)->generic());
+                                
+                                if (expected->parameters().size() < identifier->generics().size()) {
+                                    auto diag = diagnostic::builder()
+                                                .severity(diagnostic::severity::error)
+                                                .location(identifier->range().begin())
+                                                .message(diagnostic::format("$ `$` takes no more than `$` generic parameters, you gave it `$`, idiot!", fn->kind() == ast::kind::function_declaration ? "Function" : "Property", name, expected->parameters().size(), identifier->generics().size()))
+                                                .highlight(identifier->range())
+                                                .note(name.range(), diagnostic::format("As you can see $ `$` was declared with exactly `$` generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name, expected->parameters().size()))
+                                                .build();
                                     
-                                                publisher().publish(diag);
-                                                mistake = true;
-                                            }
-                                            else if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
-                                                auto expected_type = sub.types().at(constant->annotation().type->declaration());
-                                                if (!types::assignment_compatible(expected_type, newexpr->annotation().type)) {
+                                    publisher().publish(diag);
+                                    mistake = true;
+                                }
+                                else for (size_t i = 0; i < identifier->generics().size(); ++i)
+                                {
+                                    if (auto constant = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(expected->parameters().at(i))) {
+                                        if (auto ambiguous = std::dynamic_pointer_cast<ast::type_expression>(identifier->generics().at(i))) {
+                                            if (ambiguous->is_ambiguous()) {
+                                                auto newexpr = ambiguous->as_expression();
+                                                newexpr->accept(*this);
+                                                identifier->generics().at(i) = newexpr;
+
+                                                if (newexpr->annotation().istype) {
                                                     auto diag = diagnostic::builder()
                                                         .severity(diagnostic::severity::error)
                                                         .location(ambiguous->range().begin())
-                                                        .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), newexpr->annotation().type->string()))
-                                                        .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                        .message(diagnostic::format("I need constant value of type `$` but I found type `$` instead, dammit!", constant->annotation().type->string(), newexpr->annotation().type->string()))
+                                                        .highlight(ambiguous->range(), diagnostic::format("expected value", constant->annotation().type->string()))
+                                                        .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                        .build();
+                                        
+                                                    publisher().publish(diag);
+                                                    mistake = true;
+                                                }
+                                                else if (constant->annotation().type->category() == ast::type::category::generic_type && sub.types().count(constant->annotation().type->declaration())) {
+                                                    auto expected_type = sub.types().at(constant->annotation().type->declaration());
+                                                    if (!types::assignment_compatible(expected_type, newexpr->annotation().type)) {
+                                                        auto diag = diagnostic::builder()
+                                                            .severity(diagnostic::severity::error)
+                                                            .location(ambiguous->range().begin())
+                                                            .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", expected_type->string(), newexpr->annotation().type->string()))
+                                                            .highlight(ambiguous->range(), diagnostic::format("expected $", expected_type->string()))
+                                                            .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                            .build();
+                                            
+                                                        publisher().publish(diag);
+                                                        mistake = true;
+                                                    }
+                                                    else {
+                                                        try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false;  newexpr->annotation().isparametric = true; }
+                                                        sub.put(constant.get(), newexpr->annotation().value);
+                                                    }
+                                                } 
+                                                else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
+                                                    auto diag = diagnostic::builder()
+                                                        .severity(diagnostic::severity::error)
+                                                        .location(ambiguous->range().begin())
+                                                        .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", constant->annotation().type->string(), newexpr->annotation().type->string()))
+                                                        .highlight(ambiguous->range(), diagnostic::format("expected $", constant->annotation().type->string()))
                                                         .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                         .build();
                                         
@@ -5111,16 +5129,34 @@ namespace nemesis {
                                                     mistake = true;
                                                 }
                                                 else {
-                                                    try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false;  newexpr->annotation().isparametric = true; }
+                                                    try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false; newexpr->annotation().isparametric = true; }
                                                     sub.put(constant.get(), newexpr->annotation().value);
                                                 }
-                                            } 
-                                            else if (!types::assignment_compatible(constant->annotation().type, newexpr->annotation().type)) {
+                                            }
+                                            else {
+                                                ambiguous->accept(*this);
+
                                                 auto diag = diagnostic::builder()
                                                     .severity(diagnostic::severity::error)
                                                     .location(ambiguous->range().begin())
-                                                    .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", constant->annotation().type->string(), newexpr->annotation().type->string()))
-                                                    .highlight(ambiguous->range(), diagnostic::format("expected $", constant->annotation().type->string()))
+                                                    .message(diagnostic::format("I need constant value of type `$` but I found type `$` instead, dammit!", constant->annotation().type->string(), ambiguous->annotation().type->string()))
+                                                    .highlight(ambiguous->range(), diagnostic::format("expected value", constant->annotation().type->string()))
+                                                    .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
+                                                    .build();
+                                    
+                                                publisher().publish(diag);
+                                                mistake = true;
+                                            }
+                                        }
+                                        else {
+                                            identifier->generics().at(i)->accept(*this);
+
+                                            if (!types::compatible(constant->annotation().type, identifier->generics().at(i)->annotation().type)) {
+                                                auto diag = diagnostic::builder()
+                                                    .severity(diagnostic::severity::error)
+                                                    .location(identifier->generics().at(i)->range().begin())
+                                                    .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", constant->annotation().type->string(), identifier->generics().at(i)->annotation().type->string()))
+                                                    .highlight(identifier->generics().at(i)->range(), diagnostic::format("expected $", constant->annotation().type->string()))
                                                     .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
                                                     .build();
                                     
@@ -5128,320 +5164,287 @@ namespace nemesis {
                                                 mistake = true;
                                             }
                                             else {
-                                                try { newexpr->annotation().value = evaluate(newexpr); } catch (evaluator::generic_evaluation&) { concrete = false; newexpr->annotation().isparametric = true; }
-                                                sub.put(constant.get(), newexpr->annotation().value);
+                                                try { identifier->generics().at(i)->annotation().value = evaluate(identifier->generics().at(i)); } catch (evaluator::generic_evaluation&) { concrete = false; identifier->generics().at(i)->annotation().isparametric = true; }
+                                                sub.put(constant.get(), identifier->generics().at(i)->annotation().value);
                                             }
                                         }
-                                        else {
-                                            ambiguous->accept(*this);
-
-                                            auto diag = diagnostic::builder()
-                                                .severity(diagnostic::severity::error)
-                                                .location(ambiguous->range().begin())
-                                                .message(diagnostic::format("I need constant value of type `$` but I found type `$` instead, dammit!", constant->annotation().type->string(), ambiguous->annotation().type->string()))
-                                                .highlight(ambiguous->range(), diagnostic::format("expected value", constant->annotation().type->string()))
-                                                .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
-                                                .build();
-                                
-                                            publisher().publish(diag);
-                                            mistake = true;
-                                        }
                                     }
-                                    else {
+                                    else if (auto type = std::dynamic_pointer_cast<ast::generic_type_parameter_declaration>(expected->parameters().at(i))) {
+                                        identifier->generics().at(i)->annotation().mustvalue = false;
                                         identifier->generics().at(i)->accept(*this);
 
-                                        if (!types::compatible(constant->annotation().type, identifier->generics().at(i)->annotation().type)) {
+                                        if (!identifier->generics().at(i)->annotation().istype) {
                                             auto diag = diagnostic::builder()
-                                                .severity(diagnostic::severity::error)
-                                                .location(identifier->generics().at(i)->range().begin())
-                                                .message(diagnostic::format("I was expecting type `$` for constant parameter but I found type `$`, idiot!", constant->annotation().type->string(), identifier->generics().at(i)->annotation().type->string()))
-                                                .highlight(identifier->generics().at(i)->range(), diagnostic::format("expected $", constant->annotation().type->string()))
-                                                .note(constant->range(), diagnostic::format("Look at parameter `$` declaration.", constant->name().lexeme()))
-                                                .build();
-                                
+                                                    .severity(diagnostic::severity::error)
+                                                    .location(identifier->generics().at(i)->range().begin())
+                                                    .message("I need type parameter here but I found an expression instead, dammit!")
+                                                    .highlight(identifier->generics().at(i)->range(), "expected type")
+                                                    .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
+                                                    .build();
+                                    
                                             publisher().publish(diag);
                                             mistake = true;
                                         }
                                         else {
-                                            try { identifier->generics().at(i)->annotation().value = evaluate(identifier->generics().at(i)); } catch (evaluator::generic_evaluation&) { concrete = false; identifier->generics().at(i)->annotation().isparametric = true; }
-                                            sub.put(constant.get(), identifier->generics().at(i)->annotation().value);
+                                            if (auto typeexpr = std::dynamic_pointer_cast<ast::type_expression>(identifier->generics().at(i))) {
+                                                if (typeexpr->is_parametric()) concrete = false;
+                                            }
+                                            
+                                            sub.put(type.get(), identifier->generics().at(i)->annotation().type);
                                         }
                                     }
                                 }
-                                else if (auto type = std::dynamic_pointer_cast<ast::generic_type_parameter_declaration>(expected->parameters().at(i))) {
-                                    identifier->generics().at(i)->annotation().mustvalue = false;
-                                    identifier->generics().at(i)->accept(*this);
-
-                                    if (!identifier->generics().at(i)->annotation().istype) {
-                                        auto diag = diagnostic::builder()
-                                                .severity(diagnostic::severity::error)
-                                                .location(identifier->generics().at(i)->range().begin())
-                                                .message("I need type parameter here but I found an expression instead, dammit!")
-                                                .highlight(identifier->generics().at(i)->range(), "expected type")
-                                                .note(type->range(), diagnostic::format("Type `$` declares `$` as a type parameter.", name, type->name().lexeme()))
-                                                .build();
-                                
-                                        publisher().publish(diag);
-                                        mistake = true;
-                                    }
-                                    else {
-                                        if (auto typeexpr = std::dynamic_pointer_cast<ast::type_expression>(identifier->generics().at(i))) {
-                                            if (typeexpr->is_parametric()) concrete = false;
-                                        }
-                                        
-                                        sub.put(type.get(), identifier->generics().at(i)->annotation().type);
-                                    }
-                                }
-                            }
-                        
-                            if (mistake) {
-                                expr.invalid(true);
-                                expr.annotation().type = types::unknown();
-                                throw semantic_error();
-                            }
-                        }
-                    }
-
-                    if (auto fdecl = dynamic_cast<const ast::function_declaration*>(identifier->annotation().referencing)) {
-                        if (auto generic = std::dynamic_pointer_cast<ast::generic_clause_declaration>(fdecl->generic())) {
-                            // matcher will contain all generics bindings
-                            ast::type_matcher::result match;
-
-                            sub.context(scopes_.at(generic.get()));
-
-                            // first explicit generic arguments are added to match list
-                            for (std::size_t i = 0; i < identifier->generics().size(); ++i) {
-                                if (auto constparam = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(generic->parameters().at(i))) {
-                                    match.value(constparam->name().lexeme().string(), identifier->generics().at(i)->annotation().value);
-                                }
-                                else if (auto typeparam = std::dynamic_pointer_cast<ast::generic_type_parameter_declaration>(generic->parameters().at(i))) {
-                                    match.type(typeparam->name().lexeme().string(), identifier->generics().at(i)->annotation().type);
-                                }
-                            }
-
-                            if (!fdecl->parameters().empty()) {
-                                ast::type_matcher matcher(member->expression(), fdecl->parameters().front()->annotation().type, publisher());
-                                matcher.match(member->expression()->annotation().type, match, std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().front())->is_variadic());
-                            }
-
-                            // then we try to deduce generic arguments from function arguments
-                            for (std::size_t i = 1; i < fdecl->parameters().size(); ++i) {
-                                expr.arguments().at(i - 1)->accept(*this);
-
-                                ast::type_matcher matcher(expr.arguments().at(i - 1), fdecl->parameters().at(i)->annotation().type, publisher());
-                                if (!matcher.match(expr.arguments().at(i - 1)->annotation().type, match, std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().at(i))->is_variadic()) && !match.duplication) {
-                                    auto param = std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().at(i));
-                                    auto builder = diagnostic::builder()
-                                                .location(expr.arguments().at(i)->range().begin())
-                                                .severity(diagnostic::severity::error)
-                                                .small(true)
-                                                .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", param->annotation().type->string()))
-                                                .message(diagnostic::format("Type mismatch between argument and parameter, found `$` and `$`.", expr.arguments().at(i - 1)->annotation().type->string(), param->annotation().type->string()))
-                                                .note(param->name().range(), diagnostic::format("Have a look at parameter `$` idiot.", param->name().lexeme()));
-                                    
-                                    publisher().publish(builder.build());
-                                }
-                            }
-
-                            if (!match) {
-                                expr.annotation().type = types::unknown();
-                                expr.invalid(true);
-                                throw semantic_error();
-                            }
-                            else {
-                                for (auto generic_parameter : generic->parameters()) {
-                                    token name = generic_parameter->kind() == ast::kind::generic_const_parameter_declaration ? std::static_pointer_cast<ast::generic_const_parameter_declaration>(generic_parameter)->name() : std::static_pointer_cast<ast::generic_type_parameter_declaration>(generic_parameter)->name();
-                                    auto found = match.bindings.find(name.lexeme().string());
-                                    if (found == match.bindings.end() || (generic_parameter->kind() == ast::kind::generic_type_parameter_declaration && found->second.type->category() == ast::type::category::unknown_type)) {
-                                        std::ostringstream oss;
-
-                                        oss << fdecl->name().lexeme() << "!(" << name.lexeme() << ")";
-
-                                        auto builder = diagnostic::builder()
-                                                    .location(expr.range().begin())
-                                                    .severity(diagnostic::severity::error)
-                                                    .small(true)
-                                                    .highlight(expr.callee()->range())
-                                                    .highlight(name.range(), diagnostic::highlighter::mode::light)
-                                                    .message(diagnostic::format("I can't deduce $ parameter `$` in this function call, dammit!", generic_parameter->kind() == ast::kind::generic_const_parameter_declaration ? "value" : "type", name.lexeme()))
-                                                    .replacement(expr.callee()->range(), oss.str(), diagnostic::format("Try specifying argument `$` explicit to make it clear!", name.lexeme()));
-                                        
-                                        publisher().publish(builder.build());
-                                        concrete = false;
-                                    }
-                                    else if (generic_parameter->kind() == ast::kind::generic_const_parameter_declaration) {
-                                        sub.put(generic_parameter.get(), found->second.value);
-                                    }
-                                    else {
-                                        sub.put(generic_parameter.get(), found->second.type);
-                                    }
-                                }
-                                /*
-                                std::cout << "TYPE MATCHER BINDINGS " << fdecl->name().lexeme() << '\n';
-                                for (auto binding : match.bindings) {
-                                    if (binding.second.kind == ast::type_matcher::parameter::kind::type) {
-                                        std::cout << binding.first << " = " << binding.second.type->string() << '\n';
-                                    }
-                                    else {
-                                        std::cout << binding.first << " = " << binding.second.value << '\n';
-                                    }
-                                }
-                                */
-                                if (!concrete) {
+                            
+                                if (mistake) {
                                     expr.invalid(true);
                                     expr.annotation().type = types::unknown();
                                     throw semantic_error();
                                 }
-
-                                auto instantiated = instantiate_function(*fdecl, sub);
-                                identifier->annotation().referencing = instantiated.get();
-                                fntype = std::dynamic_pointer_cast<ast::function_type>(instantiated->annotation().type);
-                                expr.annotation().type = fntype->result();
                             }
                         }
-                        // checks if there were provided any generic arguments
-                        else if (identifier && identifier->is_generic()) {
-                            auto fn = identifier->annotation().referencing;
-                            auto name = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->name() : static_cast<const ast::property_declaration*>(fn)->name();
-                            auto diag = diagnostic::builder()
-                                        .severity(diagnostic::severity::error)
-                                        .location(expr.range().begin())
-                                        .message(diagnostic::format("$ `$` doesn't take any generic parameters, idiot!", fn->kind() == ast::kind::function_declaration ? "Function" : "Property", name.lexeme()))
-                                        .highlight(expr.callee()->range())
-                                        .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme()))
-                                        .build();
-                                
-                            publisher().publish(diag);
 
-                            expr.invalid(true);
-                            expr.annotation().type = types::unknown();
-                            throw semantic_error();
+                        if (auto fdecl = dynamic_cast<const ast::function_declaration*>(identifier->annotation().referencing)) {
+                            if (auto generic = std::dynamic_pointer_cast<ast::generic_clause_declaration>(fdecl->generic())) {
+                                // matcher will contain all generics bindings
+                                ast::type_matcher::result match;
+
+                                sub.context(scopes_.at(generic.get()));
+
+                                // first explicit generic arguments are added to match list
+                                for (std::size_t i = 0; i < identifier->generics().size(); ++i) {
+                                    if (auto constparam = std::dynamic_pointer_cast<ast::generic_const_parameter_declaration>(generic->parameters().at(i))) {
+                                        match.value(constparam->name().lexeme().string(), identifier->generics().at(i)->annotation().value);
+                                    }
+                                    else if (auto typeparam = std::dynamic_pointer_cast<ast::generic_type_parameter_declaration>(generic->parameters().at(i))) {
+                                        match.type(typeparam->name().lexeme().string(), identifier->generics().at(i)->annotation().type);
+                                    }
+                                }
+
+                                if (!fdecl->parameters().empty()) {
+                                    ast::type_matcher matcher(member->expression(), fdecl->parameters().front()->annotation().type, publisher());
+                                    matcher.match(member->expression()->annotation().type, match, std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().front())->is_variadic());
+                                }
+
+                                // then we try to deduce generic arguments from function arguments
+                                for (std::size_t i = 1; i < fdecl->parameters().size(); ++i) {
+                                    expr.arguments().at(i - 1)->accept(*this);
+
+                                    ast::type_matcher matcher(expr.arguments().at(i - 1), fdecl->parameters().at(i)->annotation().type, publisher());
+                                    if (!matcher.match(expr.arguments().at(i - 1)->annotation().type, match, std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().at(i))->is_variadic()) && !match.duplication) {
+                                        auto param = std::static_pointer_cast<ast::parameter_declaration>(fdecl->parameters().at(i));
+                                        auto builder = diagnostic::builder()
+                                                    .location(expr.arguments().at(i)->range().begin())
+                                                    .severity(diagnostic::severity::error)
+                                                    .small(true)
+                                                    .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", param->annotation().type->string()))
+                                                    .message(diagnostic::format("Type mismatch between argument and parameter, found `$` and `$`.", expr.arguments().at(i - 1)->annotation().type->string(), param->annotation().type->string()))
+                                                    .note(param->name().range(), diagnostic::format("Have a look at parameter `$` idiot.", param->name().lexeme()));
+                                        
+                                        publisher().publish(builder.build());
+                                    }
+                                }
+
+                                if (!match) {
+                                    expr.annotation().type = types::unknown();
+                                    expr.invalid(true);
+                                    throw semantic_error();
+                                }
+                                else {
+                                    for (auto generic_parameter : generic->parameters()) {
+                                        token name = generic_parameter->kind() == ast::kind::generic_const_parameter_declaration ? std::static_pointer_cast<ast::generic_const_parameter_declaration>(generic_parameter)->name() : std::static_pointer_cast<ast::generic_type_parameter_declaration>(generic_parameter)->name();
+                                        auto found = match.bindings.find(name.lexeme().string());
+                                        if (found == match.bindings.end() || (generic_parameter->kind() == ast::kind::generic_type_parameter_declaration && found->second.type->category() == ast::type::category::unknown_type)) {
+                                            std::ostringstream oss;
+
+                                            oss << fdecl->name().lexeme() << "!(" << name.lexeme() << ")";
+
+                                            auto builder = diagnostic::builder()
+                                                        .location(expr.range().begin())
+                                                        .severity(diagnostic::severity::error)
+                                                        .small(true)
+                                                        .highlight(expr.callee()->range())
+                                                        .highlight(name.range(), diagnostic::highlighter::mode::light)
+                                                        .message(diagnostic::format("I can't deduce $ parameter `$` in this function call, dammit!", generic_parameter->kind() == ast::kind::generic_const_parameter_declaration ? "value" : "type", name.lexeme()))
+                                                        .replacement(expr.callee()->range(), oss.str(), diagnostic::format("Try specifying argument `$` explicit to make it clear!", name.lexeme()));
+                                            
+                                            publisher().publish(builder.build());
+                                            concrete = false;
+                                        }
+                                        else if (generic_parameter->kind() == ast::kind::generic_const_parameter_declaration) {
+                                            sub.put(generic_parameter.get(), found->second.value);
+                                        }
+                                        else {
+                                            sub.put(generic_parameter.get(), found->second.type);
+                                        }
+                                    }
+                                    /*
+                                    std::cout << "TYPE MATCHER BINDINGS " << fdecl->name().lexeme() << '\n';
+                                    for (auto binding : match.bindings) {
+                                        if (binding.second.kind == ast::type_matcher::parameter::kind::type) {
+                                            std::cout << binding.first << " = " << binding.second.type->string() << '\n';
+                                        }
+                                        else {
+                                            std::cout << binding.first << " = " << binding.second.value << '\n';
+                                        }
+                                    }
+                                    */
+                                    if (!concrete) {
+                                        expr.invalid(true);
+                                        expr.annotation().type = types::unknown();
+                                        throw semantic_error();
+                                    }
+
+                                    auto instantiated = instantiate_function(*fdecl, sub);
+                                    identifier->annotation().referencing = instantiated.get();
+                                    fntype = std::dynamic_pointer_cast<ast::function_type>(instantiated->annotation().type);
+                                    expr.annotation().type = fntype->result();
+                                }
+                            }
+                            // checks if there were provided any generic arguments
+                            else if (identifier && identifier->is_generic()) {
+                                auto fn = identifier->annotation().referencing;
+                                auto name = fn->kind() == ast::kind::function_declaration ? static_cast<const ast::function_declaration*>(fn)->name() : static_cast<const ast::property_declaration*>(fn)->name();
+                                auto diag = diagnostic::builder()
+                                            .severity(diagnostic::severity::error)
+                                            .location(expr.range().begin())
+                                            .message(diagnostic::format("$ `$` doesn't take any generic parameters, idiot!", fn->kind() == ast::kind::function_declaration ? "Function" : "Property", name.lexeme()))
+                                            .highlight(expr.callee()->range())
+                                            .note(name.range(), diagnostic::format("As you can see $ `$` was declared without generic parameters.", fn->kind() == ast::kind::function_declaration ? "function" : "property", name.lexeme()))
+                                            .build();
+                                    
+                                publisher().publish(diag);
+
+                                expr.invalid(true);
+                                expr.annotation().type = types::unknown();
+                                throw semantic_error();
+                            }
                         }
-                    }
-                    else if (auto vdecl = dynamic_cast<const ast::var_declaration*>(identifier->annotation().referencing)) {
-                        if (identifier && identifier->is_generic()) {
-                            auto name = vdecl->name();
-                            auto diag = diagnostic::builder()
-                                        .severity(diagnostic::severity::error)
-                                        .location(expr.range().begin())
-                                        .message(diagnostic::format("Callable `$` doesn't take any generic parameters, idiot!", name.lexeme()))
-                                        .highlight(expr.callee()->range())
-                                        .note(name.range(), diagnostic::format("As you can see callable `$` was declared without generic parameters.", name.lexeme()))
-                                        .build();
-                                
-                            publisher().publish(diag);
-                            expr.invalid(true);
-                            expr.annotation().type = types::unknown();
-                            throw semantic_error();
+                        else if (auto vdecl = dynamic_cast<const ast::var_declaration*>(identifier->annotation().referencing)) {
+                            if (identifier && identifier->is_generic()) {
+                                auto name = vdecl->name();
+                                auto diag = diagnostic::builder()
+                                            .severity(diagnostic::severity::error)
+                                            .location(expr.range().begin())
+                                            .message(diagnostic::format("Callable `$` doesn't take any generic parameters, idiot!", name.lexeme()))
+                                            .highlight(expr.callee()->range())
+                                            .note(name.range(), diagnostic::format("As you can see callable `$` was declared without generic parameters.", name.lexeme()))
+                                            .build();
+                                    
+                                publisher().publish(diag);
+                                expr.invalid(true);
+                                expr.annotation().type = types::unknown();
+                                throw semantic_error();
+                            }
                         }
-                    }
 
-                    ast::pointers<ast::declaration> params;
+                        ast::pointers<ast::declaration> params;
 
-                    if (fn->kind() == ast::kind::function_declaration) params = static_cast<const ast::function_declaration*>(fn)->parameters();
-                    else if (fn->kind() == ast::kind::property_declaration) params = static_cast<const ast::property_declaration*>(fn)->parameters();
+                        if (fn->kind() == ast::kind::function_declaration) params = static_cast<const ast::function_declaration*>(fn)->parameters();
+                        else if (fn->kind() == ast::kind::property_declaration) params = static_cast<const ast::property_declaration*>(fn)->parameters();
 
-                    if (fn) test_immutable_assignment(*std::dynamic_pointer_cast<ast::parameter_declaration>(params.front()), *member->expression());
+                        if (fn) test_immutable_assignment(*std::dynamic_pointer_cast<ast::parameter_declaration>(params.front()), *member->expression());
 
-                    // implicit cast for object parameter (first hidden parameter in oop)
-                    if (auto implicit = implicit_cast(fntype->formals().front(), member->expression())) member->expression() = implicit;
-                    
-                    // first parameter is implicit
-                    for (std::size_t i = 0; i < fntype->formals().size() - 1; ++i) {
-                        // variadic case
-                        if (variadic && variadic->category() != ast::type::category::unknown_type && i == fntype->formals().size() - 2) {
-                            variadic = std::static_pointer_cast<ast::slice_type>(fntype->formals().back())->base();
-                            ast::pointers<ast::expression> elements;
-                            
-                            for (std::size_t j = i; j < expr.arguments().size(); ++j) {
-                                expr.arguments().at(j)->accept(*this);
-                                if (expr.arguments().at(j)->annotation().type->category() == ast::type::category::unknown_type) continue;
-                                else if (types::assignment_compatible(variadic, expr.arguments().at(j)->annotation().type)) {
-                                    if (auto implicit = implicit_cast(variadic, expr.arguments().at(j))) {
-                                        expr.arguments().at(j) = implicit;
+                        // implicit cast for object parameter (first hidden parameter in oop)
+                        if (auto implicit = implicit_cast(fntype->formals().front(), member->expression())) member->expression() = implicit;
+                        
+                        // first parameter is implicit
+                        for (std::size_t i = 0; i < fntype->formals().size() - 1; ++i) {
+                            // variadic case
+                            if (variadic && variadic->category() != ast::type::category::unknown_type && i == fntype->formals().size() - 2) {
+                                variadic = std::static_pointer_cast<ast::slice_type>(fntype->formals().back())->base();
+                                ast::pointers<ast::expression> elements;
+                                
+                                for (std::size_t j = i; j < expr.arguments().size(); ++j) {
+                                    expr.arguments().at(j)->accept(*this);
+                                    if (expr.arguments().at(j)->annotation().type->category() == ast::type::category::unknown_type) continue;
+                                    else if (types::assignment_compatible(variadic, expr.arguments().at(j)->annotation().type)) {
+                                        if (auto implicit = implicit_cast(variadic, expr.arguments().at(j))) {
+                                            expr.arguments().at(j) = implicit;
+                                        }
+                                        else {
+                                            expr.arguments().at(j)->annotation().type = variadic;
+                                        }
                                     }
                                     else {
-                                        expr.arguments().at(j)->annotation().type = variadic;
+                                        auto builder = diagnostic::builder()
+                                                    .severity(diagnostic::severity::error)
+                                                    .location(expr.arguments().at(j)->range().begin())
+                                                    .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", variadic->string(), expr.arguments().at(j)->annotation().type->string()))
+                                                    .highlight(expr.arguments().at(j)->range(), diagnostic::format("expected $", variadic->string()));
+
+                                        publisher().publish(builder.build());
                                     }
+                                    elements.push_back(expr.arguments().at(j));
+                                }
+                                
+                                auto array = ast::create<ast::array_expression>(source_range(expr.arguments().at(i)->range().begin(), expr.arguments().back()->range().end()), elements);
+                                array->annotation().type = types::array(variadic, expr.arguments().size() - i);
+
+                                auto binding = create_temporary_var(*array);
+                                binding->annotation().scope = scope_->enclosing();
+                                pending_insertions.emplace_back(scope_, binding, statement_, false);
+
+                                array->annotation().referencing = binding.get();
+                                
+                                for (std::size_t j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
+
+                                expr.arguments().back() = implicit_forced_cast(types::slice(variadic), array);
+                            }
+                            else {
+                                expr.arguments().at(i)->accept(*this);
+                                if (fntype->formals().at(i + 1)->category() == ast::type::category::unknown_type || expr.arguments().at(i)->annotation().type->category() == ast::type::category::unknown_type) continue;
+                                else if (types::assignment_compatible(fntype->formals().at(i + 1), expr.arguments().at(i)->annotation().type)) {
+                                    if (auto implicit = implicit_cast(fntype->formals().at(i + 1), expr.arguments().at(i))) {
+                                        expr.arguments().at(i) = implicit;
+                                    }
+                                    else {
+                                        expr.arguments().at(i)->annotation().type = fntype->formals().at(i + 1);
+                                    }
+
+                                    if (fn) test_immutable_assignment(*std::dynamic_pointer_cast<ast::parameter_declaration>(params.at(i + 1)), *expr.arguments().at(i));
                                 }
                                 else {
                                     auto builder = diagnostic::builder()
                                                 .severity(diagnostic::severity::error)
-                                                .location(expr.arguments().at(j)->range().begin())
-                                                .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", variadic->string(), expr.arguments().at(j)->annotation().type->string()))
-                                                .highlight(expr.arguments().at(j)->range(), diagnostic::format("expected $", variadic->string()));
+                                                .location(expr.arguments().at(i)->range().begin())
+                                                .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", fntype->formals().at(i + 1)->string(), expr.arguments().at(i)->annotation().type->string()))
+                                                .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", fntype->formals().at(i + 1)->string()));
 
                                     publisher().publish(builder.build());
                                 }
-                                elements.push_back(expr.arguments().at(j));
                             }
-                            
-                            auto array = ast::create<ast::array_expression>(source_range(expr.arguments().at(i)->range().begin(), expr.arguments().back()->range().end()), elements);
-                            array->annotation().type = types::array(variadic, expr.arguments().size() - i);
-
-                            auto binding = create_temporary_var(*array);
-                            binding->annotation().scope = scope_->enclosing();
-                            pending_insertions.emplace_back(scope_, binding, statement_, false);
-
-                            array->annotation().referencing = binding.get();
-                            
-                            for (std::size_t j = expr.arguments().size() - 1; j > i; --j) expr.arguments().pop_back();
-
-                            expr.arguments().back() = implicit_forced_cast(types::slice(variadic), array);
                         }
-                        else {
+                    
+                    
+                    }
+                    // otherwise it is a field whose type is function which is called and it may seems to be a method but it is just a (callable) field
+                    else {
+                        if (expr.arguments().size() != fntype->formals().size()) {
+                            expr.invalid(true);
+                            expr.annotation().type = types::unknown();
+                            error(expr.callee()->range(), diagnostic::format("This function expects `$` arguments but you gave it `$`, pr*ck!", fntype->formals().size(), expr.arguments().size()));
+                        }
+                        
+                        for (std::size_t i = 0; i < fntype->formals().size(); ++i) {
                             expr.arguments().at(i)->accept(*this);
-                            if (fntype->formals().at(i + 1)->category() == ast::type::category::unknown_type || expr.arguments().at(i)->annotation().type->category() == ast::type::category::unknown_type) continue;
-                            else if (types::assignment_compatible(fntype->formals().at(i + 1), expr.arguments().at(i)->annotation().type)) {
-                                if (auto implicit = implicit_cast(fntype->formals().at(i + 1), expr.arguments().at(i))) {
+                            if (fntype->formals().at(i)->category() == ast::type::category::unknown_type || expr.arguments().at(i)->annotation().type->category() == ast::type::category::unknown_type) continue;
+                            else if (types::assignment_compatible(fntype->formals().at(i), expr.arguments().at(i)->annotation().type)) {
+                                if (auto implicit = implicit_cast(fntype->formals().at(i), expr.arguments().at(i))) {
                                     expr.arguments().at(i) = implicit;
                                 }
                                 else {
-                                    expr.arguments().at(i)->annotation().type = fntype->formals().at(i + 1);
+                                    expr.arguments().at(i)->annotation().type = fntype->formals().at(i);
                                 }
-
-                                if (fn) test_immutable_assignment(*std::dynamic_pointer_cast<ast::parameter_declaration>(params.at(i + 1)), *expr.arguments().at(i));
                             }
                             else {
                                 auto builder = diagnostic::builder()
                                             .severity(diagnostic::severity::error)
                                             .location(expr.arguments().at(i)->range().begin())
-                                            .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", fntype->formals().at(i + 1)->string(), expr.arguments().at(i)->annotation().type->string()))
-                                            .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", fntype->formals().at(i + 1)->string()));
+                                            .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", fntype->formals().at(i)->string(), expr.arguments().at(i)->annotation().type->string()))
+                                            .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", fntype->formals().at(i)->string()));
 
                                 publisher().publish(builder.build());
                             }
-                        }
-                    }
-                
-                }
-                // otherwise it is a field whose type is function which is called and it may seems to be a method but it is just a (callable) field
-                else {
-                    if (expr.arguments().size() != fntype->formals().size()) {
-                        expr.invalid(true);
-                        expr.annotation().type = types::unknown();
-                        error(expr.callee()->range(), diagnostic::format("This function expects `$` arguments but you gave it `$`, pr*ck!", fntype->formals().size(), expr.arguments().size()));
-                    }
-                    
-                    for (std::size_t i = 0; i < fntype->formals().size(); ++i) {
-                        expr.arguments().at(i)->accept(*this);
-                        if (fntype->formals().at(i)->category() == ast::type::category::unknown_type || expr.arguments().at(i)->annotation().type->category() == ast::type::category::unknown_type) continue;
-                        else if (types::assignment_compatible(fntype->formals().at(i), expr.arguments().at(i)->annotation().type)) {
-                            if (auto implicit = implicit_cast(fntype->formals().at(i), expr.arguments().at(i))) {
-                                expr.arguments().at(i) = implicit;
-                            }
-                            else {
-                                expr.arguments().at(i)->annotation().type = fntype->formals().at(i);
-                            }
-                        }
-                        else {
-                            auto builder = diagnostic::builder()
-                                        .severity(diagnostic::severity::error)
-                                        .location(expr.arguments().at(i)->range().begin())
-                                        .message(diagnostic::format("This argument must have type `$`, but I found `$`, idiot!", fntype->formals().at(i)->string(), expr.arguments().at(i)->annotation().type->string()))
-                                        .highlight(expr.arguments().at(i)->range(), diagnostic::format("expected $", fntype->formals().at(i)->string()));
-
-                            publisher().publish(builder.build());
                         }
                     }
                 }

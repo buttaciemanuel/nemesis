@@ -490,7 +490,7 @@ namespace nemesis {
         // generation is launched
         auto targets = codegen.generate();
         // now compile all targets files and cpp source files to cpp files
-        if (compilation.build(targets)) exit_code_ = impl::exit::success;
+        if (!targets.empty() && compilation.build(targets)) exit_code_ = impl::exit::success;
         else exit_code_ = impl::exit::failure;
     }
 }

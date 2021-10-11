@@ -95,7 +95,7 @@ namespace nemesis {
         /**
          * @return Current workspace
          */
-        struct package& current() { return package_; }
+        struct package& current() const { return package_; }
         /**
          * @return List of dependencies
          */
@@ -215,7 +215,7 @@ namespace nemesis {
         /**
          * Current workspace package, which can be a library or simple application
          */
-        struct package package_;
+        mutable struct package package_;
         /**
          * List of dependencies in the order to be processed
          */
