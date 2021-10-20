@@ -2135,6 +2135,26 @@ namespace nemesis {
     {
         if (emit_if_constant(expr)) return;
 
+        if (auto block = std::dynamic_pointer_cast<ast::block_expression>(expr.expression())) {
+            for (auto stmt : block->statements()) {
+                if (stmt.get() == block->exprnode()) {
+                    if (auto expr_stmt = std::dynamic_pointer_cast<ast::expression_statement>(stmt)) {
+                        expr_stmt->expression() = checker_.implicit_forced_cast(expr.annotation().type, expr_stmt->expression());
+                    }
+                    else if (auto ret_stmt = std::dynamic_pointer_cast<ast::return_statement>(stmt)) {
+                        if (ret_stmt->expression()) ret_stmt->expression() = checker_.implicit_forced_cast(expr.annotation().type, ret_stmt->expression());
+                    }
+                    else if (auto brk_stmt = std::dynamic_pointer_cast<ast::break_statement>(stmt)) {
+                        if (brk_stmt->expression()) brk_stmt->expression() = checker_.implicit_forced_cast(expr.annotation().type, brk_stmt->expression());
+                    }
+                }
+            }
+
+            block->accept(*this);
+
+            return;
+        }
+
         auto original = expr.expression()->annotation().type, result = expr.annotation().type;
 
         // implicit unpacking of variant type
@@ -2558,8 +2578,6 @@ namespace nemesis {
 
         output_.line();
 
-        stmt.expression()->accept(*this);
-
         switch (stmt.expression()->kind()) {
             case ast::kind::if_expression:
             case ast::kind::when_cast_expression:
@@ -2567,9 +2585,18 @@ namespace nemesis {
             case ast::kind::when_expression:
             case ast::kind::for_loop_expression:
             case ast::kind::for_range_expression:
+                if (auto temporary = dynamic_cast<const ast::var_declaration*>(stmt.expression()->annotation().referencing)) {
+                    auto block = dynamic_cast<const ast::block_expression*>(checker_.scopes().at(stmt.annotation().scope)->outscope(environment::kind::block));
+                    if (block && &stmt == block->exprnode()) {
+                        if (!result_vars.empty()) output_.stream() << result_vars.top() << " = " << temporary->name().lexeme() << ";\n";
+                    }
+                    else output_.stream() << temporary->name().lexeme() << ";\n";
+                }
                 break;
             default:
+                stmt.expression()->accept(*this);
                 output_.stream() << ";\n";
+                break;
         }
     }
 

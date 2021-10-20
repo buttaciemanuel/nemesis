@@ -110,6 +110,7 @@ namespace nemesis {
                             auto name = token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat("__tag").build()).build();
                             auto field = ast::create<ast::identifier_expression>(source_range(), name, ast::pointers<ast::expression>());
                             auto left = ast::create<ast::member_expression>(source_range(), tree, field);
+                            field->annotation().type = left->annotation().type = nemesis::types::usize();
                             auto typehash = std::to_string(std::hash<std::string>()(pattern->annotation().type->string()));
                             auto tag = token::builder().artificial(true).kind(token::kind::integer_literal).lexeme(utf8::span::builder().concat((typehash + "usize").data()).build()).build();
                             auto right = ast::create<ast::literal_expression>(tag);
@@ -119,6 +120,7 @@ namespace nemesis {
                             condition->annotation().type = nemesis::types::boolean();
                             name = token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat(("_" + typehash).data()).build()).build();
                             field = ast::create<ast::identifier_expression>(source_range(), name, ast::pointers<ast::expression>());
+                            field->annotation().type = nemesis::types::usize();
                             newtree = left = ast::create<ast::member_expression>(source_range(), tree, field);
                         }
                     }
@@ -155,6 +157,7 @@ namespace nemesis {
                             auto name = token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat("__tag").build()).build();
                             auto field = ast::create<ast::identifier_expression>(source_range(), name, ast::pointers<ast::expression>());
                             auto left = ast::create<ast::member_expression>(source_range(), tree, field);
+                            field->annotation().type = left->annotation().type = nemesis::types::usize();
                             auto typehash = std::to_string(std::hash<std::string>()(pattern->annotation().type->string()));
                             auto tag = token::builder().artificial(true).kind(token::kind::integer_literal).lexeme(utf8::span::builder().concat((typehash + "usize").data()).build()).build();
                             auto right = ast::create<ast::literal_expression>(tag);
@@ -213,6 +216,7 @@ namespace nemesis {
                             auto name = token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat("__tag").build()).build();
                             auto field = ast::create<ast::identifier_expression>(source_range(), name, ast::pointers<ast::expression>());
                             auto left = ast::create<ast::member_expression>(source_range(), tree, field);
+                            field->annotation().type = left->annotation().type = nemesis::types::usize();
                             auto typehash = std::to_string(std::hash<std::string>()(pattern->annotation().type->string()));
                             auto tag = token::builder().artificial(true).kind(token::kind::integer_literal).lexeme(utf8::span::builder().concat((typehash + "usize").data()).build()).build();
                             auto right = ast::create<ast::literal_expression>(tag);
@@ -258,6 +262,7 @@ namespace nemesis {
                             auto name = token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat("__tag").build()).build();
                             auto field = ast::create<ast::identifier_expression>(source_range(), name, ast::pointers<ast::expression>());
                             auto left = ast::create<ast::member_expression>(source_range(), tree, field);
+                            field->annotation().type = left->annotation().type = nemesis::types::usize();
                             auto typehash = std::to_string(std::hash<std::string>()(pattern->annotation().type->string()));
                             auto tag = token::builder().artificial(true).kind(token::kind::integer_literal).lexeme(utf8::span::builder().concat((typehash + "usize").data()).build()).build();
                             auto right = ast::create<ast::literal_expression>(tag);
@@ -302,6 +307,7 @@ namespace nemesis {
                             auto name = token::builder().artificial(true).kind(token::kind::identifier).lexeme(utf8::span::builder().concat("__tag").build()).build();
                             auto field = ast::create<ast::identifier_expression>(source_range(), name, ast::pointers<ast::expression>());
                             auto left = ast::create<ast::member_expression>(source_range(), tree, field);
+                            field->annotation().type = left->annotation().type = nemesis::types::usize();
                             auto typehash = std::to_string(std::hash<std::string>()(pattern->annotation().type->string()));
                             auto tag = token::builder().artificial(true).kind(token::kind::integer_literal).lexeme(utf8::span::builder().concat((typehash + "usize").data()).build()).build();
                             auto right = ast::create<ast::literal_expression>(tag);
