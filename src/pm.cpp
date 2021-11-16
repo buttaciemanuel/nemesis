@@ -52,7 +52,7 @@ namespace nemesis {
             while (std::getline(stream, line)) {
                 if (line == "@application") {
                     // if package kind was already set, then we have an error
-                    if (result.kind != manifest::kind::none) error("You have already declared package as `$`, you cannot redefine it, idiot!", result.kind == manifest::kind::app ? "application" : "library");
+                    if (result.kind != manifest::kind::none) error("you have already declared package as `$`, you cannot redefine it, idiot!", result.kind == manifest::kind::app ? "application" : "library");
                     // sets package kind as application
                     result.kind = manifest::kind::app;
                     // sets current section
@@ -60,7 +60,7 @@ namespace nemesis {
                 }
                 else if (line == "@library") {
                     // if package kind was already set, then we have an error
-                    if (result.kind != manifest::kind::none) error("You have already declared package as `$`, you cannot redefine it, idiot!", result.kind == manifest::kind::app ? "application" : "library");
+                    if (result.kind != manifest::kind::none) error("you have already declared package as `$`, you cannot redefine it, idiot!", result.kind == manifest::kind::app ? "application" : "library");
                     // sets package kind as library
                     result.kind = manifest::kind::lib;
                     // sets current section
@@ -68,21 +68,21 @@ namespace nemesis {
                 }
                 else if (line == "@dependencies") {
                     // if dependency block was already defined, then error
-                    if (!result.dependencies.empty()) error("You are duplicating dependencies' blocks, idiot!");
+                    if (!result.dependencies.empty()) error("you are duplicating dependencies' blocks, idiot!");
                     // sets current section
                     section = line;
                 }
                 // comment
                 else if (line.front() == '#') continue;
                 // properties declared outside of a section
-                else if (section.empty()) error("You must declare a section like `@application`, `@library` or `@dependencies` before properties, c*nt!");
+                else if (section.empty()) error("you must declare a section like `@application`, `@library` or `@dependencies` before properties, c*nt!");
                 else {
                     std::istringstream linestream(line);
                     // inside application section
                     if (section == "@application") {
                         // now parse key-value pairs
                         while (linestream >> key) {
-                            if (!(linestream >> value)) error("You forgot to specify value for property `$`, dumb*ss!", key);
+                            if (!(linestream >> value)) error("you forgot to specify value for property `$`, dumb*ss!", key);
                             // comment
                             else if (key.front() == '#') continue;
                             else if (key == "name") {
@@ -111,7 +111,7 @@ namespace nemesis {
                     else if (section == "@library") {
                         // now parse key-value pairs
                         while (linestream >> key) {
-                            if (!(linestream >> value)) error("You forgot to specify value for property `$`, dumb*ss!", key);
+                            if (!(linestream >> value)) error("you forgot to specify value for property `$`, dumb*ss!", key);
                             // comment
                             else if (key.front() == '#') continue;
                             else if (key == "name") {
@@ -142,7 +142,7 @@ namespace nemesis {
                         while (linestream >> key) {
                             // comment
                             if (key.front() == '#') continue;
-                            else if (result.dependencies.count(key) > 0) error("You are duplicating `$` dependency declaration, idiot!", key);
+                            else if (result.dependencies.count(key) > 0) error("you are duplicating `$` dependency declaration, idiot!", key);
                             // version is specified
                             else if (linestream >> value) {
                                 if (!is_valid_string_value(value)) error("`$` is not a valid string value!", value);
@@ -223,23 +223,23 @@ namespace nemesis {
                     // package kind
                     result.kind = line == "@library" ? manifest::kind::lib : manifest::kind::app;
                     // if package kind was already set, then we have an error
-                    if (!result.package.name.empty()) error("You have already declared package `$` inside `nemesis.lock`, you cannot redefine it, idiot!", result.package.name);
+                    if (!result.package.name.empty()) error("you have already declared package `$` inside `nemesis.lock`, you cannot redefine it, idiot!", result.package.name);
                     // now parse current package line info
-                    if (!std::getline(stream, line)) error("Damn, information for current package is missing after `$`, file `nemesis.lock` may be corrupted.", line);
+                    if (!std::getline(stream, line)) error("damn, information for current package is missing after `$`, file `nemesis.lock` may be corrupted.", line);
                     // split line
-                    if (!parse_lock_info_from_line(line, result.package)) error("Damn, information for current package is corrupted, you need to regenerate `nemesis.lock` file!");
+                    if (!parse_lock_info_from_line(line, result.package)) error("damn, information for current package is corrupted, you need to regenerate `nemesis.lock` file!");
                 }
                 else if (line == "@dependencies") {
                     // if dependency block was already defined, then error
-                    if (!result.dependencies.empty()) error("You are duplicating dependencies' blocks inside `nemesis.lock`, idiot!");
+                    if (!result.dependencies.empty()) error("you are duplicating dependencies' blocks inside `nemesis.lock`, idiot!");
                     // for duplicates
                     std::set<std::string> dependencies;
                     // parses all dependencies
                     for (lock::info info; std::getline(stream, line);) {
                         // split line
-                        if (!parse_lock_info_from_line(line, info)) error("Damn, information for dependencies is corrupted, you need to regenerate `nemesis.lock` file!");
+                        if (!parse_lock_info_from_line(line, info)) error("damn, information for dependencies is corrupted, you need to regenerate `nemesis.lock` file!");
                         // test that dependency is not duplicated
-                        if (dependencies.count(info.name)) error("You are duplicating `$` dependency inside `nemesis.lock`, idiot!", info.name);
+                        if (dependencies.count(info.name)) error("you are duplicating `$` dependency inside `nemesis.lock`, idiot!", info.name);
                         // adds dependency
                         else {
                             dependencies.emplace(info.name);
@@ -249,7 +249,7 @@ namespace nemesis {
                 }
             }
             // checks no info is missing, even though `core` dependency is missing it is added forcefully later
-            if (result.package.name.empty()) error("Information about current package is missing, dammit! File `nemesis.lock` may be corrupted.");
+            if (result.package.name.empty()) error("information about current package is missing, dammit! File `nemesis.lock` may be corrupted.");
             // correct, return result
             return result;
         }
@@ -258,7 +258,7 @@ namespace nemesis {
         {
             std::ofstream outfile(path.data(), std::ios_base::trunc);
             // unable to open
-            if (!outfile) error("Sorry, can't create manifest file `$`...", path);
+            if (!outfile) error("sorry, can't create manifest file `$`...", path);
             // prints package
             outfile << (manifest.kind == manifest::kind::app ? "@application\n" : "@library\n")
                     << "name '" << manifest.name << "'\n"
@@ -276,7 +276,7 @@ namespace nemesis {
         {
             std::ofstream outfile(path.data(), std::ios_base::trunc);
             // unable to open
-            if (!outfile) error("Sorry, can't create lock file `$`...", path);
+            if (!outfile) error("sorry, can't create lock file `$`...", path);
             // prints package
             outfile << (lock.kind == manifest::kind::app ? "@application\n" : "@library\n");
             outfile << lock.package.name << ':' << lock.package.version << ':' << (lock.package.builtin ? "true" : "false") << ':' << lock.package.hash << ':' << lock.package.path << '\n';
@@ -324,16 +324,16 @@ namespace nemesis {
                 // 2. version is specified
                 int compare = compare_version(version, manifest.dependencies[name].version);
                 // 2.a. new version is greater, so we do an upgrade
-                if (compare > 0) warning("Tryna do upgrade of package `$` `$` -> `$`, let's see...", name, manifest.dependencies[name].version, version);
+                if (compare > 0) warning("tryna do upgrade of package `$` `$` -> `$`, let's see...", name, manifest.dependencies[name].version, version);
                 // 2.b. new version is lower, so we do a downgrade
-                else if (compare < 0) warning("Tryna do downgrade of package `$` `$` -> `$`, hope you're sure of this...", name, manifest.dependencies[name].version, version);
+                else if (compare < 0) warning("tryna do downgrade of package `$` `$` -> `$`, hope you're sure of this...", name, manifest.dependencies[name].version, version);
                 // 2.c they're equal, so no action takes place
                 // in all cases, new version is set
                 manifest.dependencies[name].version = version;
             }
             // not yet installed, so it is added
             else {
-                message("Adding package `$$` to your dependencies, brother...", version.empty() ? "" : " " + version, name);
+                message("adding package `$$` to your dependencies, brother...", version.empty() ? "" : " " + version, name);
                 manifest.dependencies.emplace(name, pm::package { name, version });
             }
             // dumps manifest
@@ -348,11 +348,11 @@ namespace nemesis {
             restored_ = manifest;
             // dependency is installed, so it needs to be removed
             if (manifest.dependencies.count(name) > 0) {
-                message("Removing package `$` from your dependencies...", name);
+                message("removing package `$` from your dependencies...", name);
                 manifest.dependencies.erase(name);
             }
             // dependency is not installed, so error
-            else error("What the hell you're doing? Package `$` is not installed here.", name);
+            else error("what the hell you're doing? Package `$` is not installed here.", name);
             // dumps manifest
             dump_manifest_file(manifest, manager::manifest_path);
             // generates and writes new lock file
@@ -370,7 +370,7 @@ namespace nemesis {
                 // remove lock file
                 std::filesystem::remove(manager::lock_path);
                 // log
-                message("Manifest file `$` restored, brother, easy.", manager::manifest_path);
+                message("manifest file `$` restored, brother, easy.", manager::manifest_path);
             }
         }
 
@@ -445,14 +445,14 @@ namespace nemesis {
             zip_source_t* source = zip_source_buffer_create(nullptr, 0, 0, nullptr);
             // check error
             if (!source) {
-                error("An error occurred while compressing archive `$`, dammit.", from);
+                error("an error occurred while compressing archive `$`, dammit.", from);
             }
             // open zip from source
             zip_t* archive = zip_open_from_source(source, ZIP_TRUNCATE, nullptr);
             // check error
             if (!archive) {
                 zip_source_free(source);
-                error("An error occurred while compressing archive `$`, dammit.", from);
+                error("an error occurred while compressing archive `$`, dammit.", from);
             }
             // keep data available after closing zip
             zip_source_keep(source);
@@ -463,13 +463,13 @@ namespace nemesis {
             // check error
             if (!buffer) {
                 zip_source_free(source);
-                error("An error occurred while compressing archive `$`, dammit.", from);
+                error("an error occurred while compressing archive `$`, dammit.", from);
             }
             // manifest file is added to archive
             if (zip_file_add(archive, (package + '/' + manager::manifest_path).data(), buffer, ZIP_FL_ENC_UTF_8) < 0) {
                 zip_source_free(source);
                 zip_source_free(buffer);
-                error("An error occurred while compressing archive `$`, dammit.", from);
+                error("an error occurred while compressing archive `$`, dammit.", from);
             }
             // create `src` directory
             zip_dir_add(archive, (package + '/' + manager::sources_path).data(), ZIP_FL_ENC_UTF_8);
@@ -483,13 +483,13 @@ namespace nemesis {
                     // check error
                     if (!buffer) {
                         zip_source_free(source);
-                        error("An error occurred while compressing archive `$`, dammit.", from);
+                        error("an error occurred while compressing archive `$`, dammit.", from);
                     }
                     // check error
                     if (zip_file_add(archive, newpath.data(), buffer, ZIP_FL_ENC_UTF_8) < 0) {
                         zip_source_free(buffer);
                         zip_source_free(source);
-                        error("An error occurred while compressing archive `$`, dammit.", from);
+                        error("an error occurred while compressing archive `$`, dammit.", from);
                     }
                 }
             }
@@ -505,13 +505,13 @@ namespace nemesis {
                     // check error
                     if (!buffer) {
                         zip_source_free(source);
-                        error("An error occurred while compressing archive `$`, dammit.", from);
+                        error("an error occurred while compressing archive `$`, dammit.", from);
                     }
                     // check error
                     if (zip_file_add(archive, newpath.data(), buffer, ZIP_FL_ENC_UTF_8) < 0) {
                         zip_source_free(buffer);
                         zip_source_free(source);
-                        error("An error occurred while compressing archive `$`, dammit.", from);
+                        error("an error occurred while compressing archive `$`, dammit.", from);
                     }
                 }
             }
@@ -588,7 +588,7 @@ namespace nemesis {
         std::list<pm::package> manager::download_package(pm::package& package, pm::lock::info& info)
         {
             // central package registry server
-            const std::string server = "http://localhost:8000";
+            const std::string server = "http://192.168.1.66:8000";
             // destination for downloaded zip file
             const std::string destination = std::string(manager::cache_path) + "/" + package.name + ".zip";
             // error code for file system operations
@@ -599,12 +599,12 @@ namespace nemesis {
             CURL* handle = curl_easy_init();
             // set up url for GET request to download package without version
             if (package.version.empty()) {
-                message("Downloading package `$`...", package.name);
+                message("downloading package `$`...", package.name);
                 curl_easy_setopt(handle, CURLOPT_URL, diagnostic::format("$/download/$", server, package.name).data());
             }
             // set up url for GET request to download package with specific version
             else {
-                message("Downloading package `$ $`...", package.name, package.version);
+                message("downloading package `$ $`...", package.name, package.version);
                 curl_easy_setopt(handle, CURLOPT_URL, diagnostic::format("$/download/$/?version=$", server, package.name, package.version).data());
             }
             // set write function to add data to file stream
@@ -637,7 +637,7 @@ namespace nemesis {
             // this is the expected checksum got from website
             std::string checksum;
             // set up url for GET request to download package checksum with specific version (got from downloaded package)
-            message("Downloading package `$ $` checksum...", package.name, manifest.version);
+            message("downloading package `$ $` checksum...", package.name, manifest.version);
             curl_easy_setopt(handle, CURLOPT_URL, diagnostic::format("$/checksum/$/?version=$", server, package.name, manifest.version).data());
             // set write function to add data to checksum string
             curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, receive_checksum);
@@ -668,11 +668,11 @@ namespace nemesis {
             // reclose file
             std::fclose(archive);
             // verify checksum is correct
-            if (digest != checksum) error("Checksum of package `$ $` doesn't match, got `$` when `$` is expected, f*ck...", package.name, manifest.version, digest, checksum);
+            if (digest != checksum) error("checksum of package `$ $` doesn't match, got `$` when `$` is expected, f*ck...", package.name, manifest.version, digest, checksum);
             // set checksum info
             info.hash = checksum;
             // operations success
-            message("Package `$$` downloaded!", package.name, package.version.empty() ? "" : " " + package.version);
+            message("package `$$` downloaded!", package.name, package.version.empty() ? "" : " " + package.version);
             // dependencies of current package
             return dependencies;
         }
@@ -689,7 +689,7 @@ namespace nemesis {
             for (auto dependency : dependencies) {
                 if (visited.count(dependency.name) > 0) {
                     // cyclic dependency, visited but not yet resolved
-                    if (graph.nodes.count(dependency.name) == 0) error("Cyclic dependency with package `$`!", dependency.name);
+                    if (graph.nodes.count(dependency.name) == 0) error("cyclic dependency with package `$`!", dependency.name);
                     // dependency conflict, two different versions, the algorithm chooses the lowest one
                     //else if (!dependency.version.empty() && graph.nodes[dependency.name].package.version != dependency.version) error("Dependency conflict, package `$` appears in both versions `$` and `$`!", dependency.name, graph.nodes[dependency.name].package.version, dependency.version);
                     // dependency conflict, two different versions, the algorithm chooses the lowest one
@@ -745,7 +745,7 @@ namespace nemesis {
             for (auto dependency : source.edges) {
                 if (visited.count(dependency.name) > 0) {
                     // cyclic dependency, visited but not yet resolved
-                    if (graph.nodes.count(dependency.name) == 0) error("Cyclic dependency with package `$`!", dependency.name);
+                    if (graph.nodes.count(dependency.name) == 0) error("cyclic dependency with package `$`!", dependency.name);
                     // dependency conflict, two different versions, the algorithm chooses the lowest one
                     else if (!dependency.version.empty() && !graph.nodes[dependency.name].package.version.empty()) {
                         // compare version of new dependency against already resolved dependency's version

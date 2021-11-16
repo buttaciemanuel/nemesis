@@ -73,32 +73,28 @@ namespace nemesis {
 
     void environment::value(std::string name, const ast::declaration* decl)
     {
-        if (name == "_") return;
-        values_.emplace(name, decl);
+        if (name != "_") values_.emplace(name, decl);
         // sets scope only if it was not already set before
         if (!decl->annotation().scope) decl->annotation().scope = enclosing_;
     }
 
     void environment::function(std::string name, const ast::declaration* fdecl)
     {
-        if (name == "_") return;
-        functions_.emplace(name, fdecl);
+        if (name != "_") functions_.emplace(name, fdecl);
         // sets scope only if it was not already set before
         if (!fdecl->annotation().scope) fdecl->annotation().scope = enclosing_;
     }
 
     void environment::type(std::string name, const ast::type_declaration* tdecl)
     {
-        if (name == "_") return;
-        types_.emplace(name, tdecl);
+        if (name != "_") types_.emplace(name, tdecl);
         // sets scope only if it was not already set before
         if (!tdecl->annotation().scope) tdecl->annotation().scope = enclosing_;
     }
 
     void environment::concept(std::string name, const ast::concept_declaration* cdecl)
     {
-        if (name == "_") return;
-        concepts_.emplace(name, cdecl);
+        if (name != "_") concepts_.emplace(name, cdecl);
         // sets scope only if it was not already set before
         if (!cdecl->annotation().scope) cdecl->annotation().scope = enclosing_;
     }

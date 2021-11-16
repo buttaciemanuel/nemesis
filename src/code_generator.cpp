@@ -139,13 +139,13 @@ namespace nemesis {
             { "u16", "std::uint16_t" },
             { "u32", "std::uint32_t" },
             { "u64", "std::uint64_t" },
-            { "u128", "std::uint128_t" },
+            { "u128", "std::uint64_t" },
             { "usize", sizeof(size_t) == 4 ? "std::uint32_t" : "std::uint64_t" },
             { "i8", "std::int8_t" },
             { "i16", "std::int16_t" },
             { "i32", "std::int32_t" },
             { "i64", "std::int64_t" },
-            { "i128", "std::int128_t" },
+            { "i128", "std::int64_t" },
             { "isize", sizeof(size_t) == 4 ? "std::int32_t" : "std::int64_t" },
             { "r16", "__rational<std::int8_t>" },
             { "r32", "__rational<std::int16_t>" },
@@ -1295,6 +1295,7 @@ namespace nemesis {
     void code_generator::visit(const ast::var_declaration& decl)
     {
         output_.stream() << "#if __DEVELOPMENT__\n";
+        std::cout << ast::printer().print(decl) << '\n';
         if (decl.annotation().scope->kind() != ast::kind::workspace) output_.line() << "__record.location(" << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
         output_.stream() << "#endif\n";
 
@@ -2591,6 +2592,9 @@ namespace nemesis {
                         if (!result_vars.empty()) output_.stream() << result_vars.top() << " = " << temporary->name().lexeme() << ";\n";
                     }
                     else output_.stream() << temporary->name().lexeme() << ";\n";
+                }
+                else {
+                    stmt.expression()->accept(*this);
                 }
                 break;
             default:
