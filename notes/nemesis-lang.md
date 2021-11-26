@@ -551,7 +551,7 @@ Se l'accesso provoca overflow, il programma fallisce.
 > **Nota**: la differenza fra `chars` e `[byte]` è di natura puramente formale e consiste solo nell'interpretazione dei byte per la decodifica dei caratteri Unicode. Quando si passa il tipo `chars` come parametro si deve tener conto che si tratta di un riferimento.
 
 #### Stringa
-Il tipo `string` è invece **mutabile** e consiste in una sequenza di byte allocati nella memoria heap. Si può considerare come un upgrade del tipo primitivo quando c'è necessità di manipolazione. Ogni stringa di questo tipo memorizza solo un puntatore ai byte allocati sull'heap e la dimensione. La concatenazione di stringhe con l'operatore `+` restituisce una nuova stringa. Quando una stringa esce dal suo campo di visibilità la memoria allocata nell'heap viene automaticamente rilasciata ed ogni riferimento non è più valido. La creazione avviene mediante la costruzione esplicita o attraverso il suffisso `s`. Le proprietà sono le stesse del tipo primitivo.
+Il tipo `string` consiste in una sequenza di byte allocati nella memoria heap. Si può considerare come un upgrade del tipo primitivo quando c'è necessità di manipolazione. Ogni stringa di questo tipo memorizza solo un puntatore ai byte allocati sull'heap e la dimensione. La concatenazione di stringhe con l'operatore `+` restituisce una nuova stringa. Quando una stringa esce dal suo campo di visibilità la memoria allocata nell'heap viene automaticamente rilasciata ed ogni riferimento non è più valido. La creazione avviene mediante la costruzione esplicita o attraverso il suffisso `s`. Le proprietà sono le stesse del tipo primitivo.
   
 <pre><code>// costruzione esplicita
 <b>val</b> str1 = "This looks like "<b>s</b>
@@ -573,7 +573,7 @@ println("Concatenation gives: {str1 + str2}")
 Il compilatore permette di interpolare espressioni all'interno di stringhe, anche in maniera ricorsiva, attraverso la scrittura `{expr}`. Una stringa che presenta interpolazione è costruita durante l'esecuzione e ha necessariamente tipo `string`.
 
 <pre><code>// identità di eulero, stampa 'e ** (1i) + π = 0'
-<b>val</b> interp = "e ** (1i) + π = {e ** (1i) + π}"
+<b>val</b> interp = "e ** (1i * π) + 1 = {e ** (1i * π) + 1}"
 </code></pre>
 
 > **Nota**: l'analisi lessicale del compilatore converte la stringa letterale `"e ** (1i) + π = {e ** (1i) + π}"`
@@ -613,10 +613,10 @@ Un'array quando passato per valore viene clonato e non spostato, ammesso che il 
 
 > **Nota**: un array vuoto `[Type : 0]` non alloca memoria.
 
-Talvolta è necessario allocare sullo stack degli array la cui dimensione è nota solo durante l'esecuzione. Questi sono detti *VLA*, ovvero variable length arrays. L'implementazione fa utilizzo della funzione *alloca* che può facilmente causare stack smashing. Tuttavia può essere comodo farne utilizzo. Per allocare una sequenza di elementi di tipo `[T : n]` costituiti tutti dal medesimo valore è possibile utilizzare la scrittura `[value : n]` in cui `n` può essere noto anche a run-time per allocare un *VLA*.
+> **Todo**: Talvolta è necessario allocare sullo stack degli array la cui dimensione è nota solo durante l'esecuzione. Questi sono detti *VLA*, ovvero variable length arrays. L'implementazione fa utilizzo della funzione *alloca* che può facilmente causare stack smashing. Tuttavia può essere comodo farne utilizzo. Per allocare una sequenza di elementi di tipo `[T : n]` costituiti tutti dal medesimo valore è possibile utilizzare la scrittura `[value : n]` in cui `n` può essere noto anche a run-time per allocare un *VLA*.
 
 ### Slice <a name="slice"></a>
-Una *slice* è un particolare riferimento ad una sequenza, ovvero una sottosequenza. Contiene internamente un puntatore all'inizio della sequenza e la lunghezza della sequenza. Tutte le operazioni attuabili su una sequenza sono anche possibili su una slice. Il tipo della slice è `[T]` dove non è specificata la lunghezza e supporta la proprietà `.length` e le notazioni `ref[i]` o `ref[i..f]`. Una slice si può costruire solamente da una sequenza orginale attraverso l'operazione `array[i..f]`.
+Una *slice* è un particolare riferimento ad una sequenza, ovvero una sottosequenza. Contiene internamente un puntatore all'inizio della sequenza e la lunghezza della sequenza. Tutte le operazioni attuabili su una sequenza sono anche possibili su una slice. Il tipo della slice è `[T]` dove non è specificata la lunghezza e supporta la proprietà `.size` e le notazioni `ref[i]` o `ref[i..f]`. Una slice si può costruire solamente da una sequenza orginale attraverso l'operazione `array[i..f]`.
 
 <pre><code>// ottengo una sottosequenza di una stringa e la stampo
 <b>val</b> s = "We're fuc*ed up! 🤡"
@@ -641,7 +641,7 @@ Una tupla è una sequenza eterogenea, ovvero con elementi di diverso tipo. Una t
 values.0 = 10
 </code></pre>
 
-Una tupla quando passata per valore viene clonata e non spostata, ammesso che il tipo degli elementi sia clonabile, altrimenti bisogna implementare il comportamento di clonazione.
+> **Todo**: Una tupla quando passata per valore viene clonata e non spostata, ammesso che il tipo degli elementi sia clonabile, altrimenti bisogna implementare il comportamento di clonazione.
 
 > **Nota**: una tupla vuota `()` è impiegata per rappresentare l'assenza di valore, non alloca memoria e viene impiegata per rappresentare il valore di ritorno delle procedure.
 <pre><code>// tipo `unit` rappresenta l'assenza di valore
@@ -820,9 +820,9 @@ println("counter = {counter}")
 > **Nota**: i puntatori sono un arma a doppio taglio.
 
 ### Type alias <a name="alias"></a>
-Quando non ci piace il nome di un tipo oppure questo è troppo lungo o proviene da un altro nucleo è possibile riferirsi ad esso con un altro nome.
+Quando non ci piace il nome di un tipo oppure questo è troppo lungo o proviene da un altro workspace è possibile riferirsi ad esso con un altro nome.
 
-<pre><code>// altro nucleo
+<pre><code>// altro workspace
 <b>use</b> difficult_names
 // se volessimo usare il tipo 'BastardVeryLongName' ma non ci piace ogni volta scrivere 'difficult_names.BastardVeryLongName'
 // si può utilizzare un alias
@@ -1266,7 +1266,7 @@ Per scrivere i commenti si utilizza la classica notazione
 Nemesis nasce come linguaggio che vuole permettere al programmare di testare i prorpri programmi dall'interno, senza bisogno di ulteriori strumenti esterni.
 
 ### Test <a name="test"></a>
-Attraverso dei blocchi `test` è possibile testare dei blocchi di codice quando il programma è lanciato in modalità di testing. Questo risulta particolarmente utile quando si vuole verificare il corretto funzionamento di singole unità di un nucleo.
+Attraverso dei blocchi `test` è possibile testare dei blocchi di codice quando il programma è lanciato in modalità di testing. Questo risulta particolarmente utile quando si vuole verificare il corretto funzionamento di singole unità di un workspace.
 
 <pre><code>// blocco di testing
 <b>test</b> this_is_my_first_test {
