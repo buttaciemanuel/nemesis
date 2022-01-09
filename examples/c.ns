@@ -1,0 +1,5 @@
+library ns.core
+
+//use A
+
+hide type V

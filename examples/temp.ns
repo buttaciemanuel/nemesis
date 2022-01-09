@@ -1,0 +1,1050 @@
+hide library ns.testing;
+library ss
+use a.a
+const SIZE = 10
+val factorial = function(n: u32) u128 {}
+val b: function(int) = 10
+val i = array[1.. 2 ..= 3]
+val c = if [1, 2] is (1, _, ...) {}
+val d = select expr {
+    [1, 2, _ ] => a
+    (...) => b
+    _ => c
+    some(value) => {}, 1 | 2.3 | 2.. | ..=4 => {}
+}
+val c = a
+type(T) if T & compare(T) | (Boh(T)) a = b
+val c = for a: ...int in boh {} else {}
+val c: ...i = {
+    a = c = d;
+}
+val a = { break value };
+//function() person(name: chars, age: u32)
+type Person(a: 3, b:1)
+type(T, N: usize) SquareMatrix = Matrix(T, N, N);
+type(T) maybe { some(T), none }
+type Empty {}
+type Prime range 2 | 3 | f(1) | 1 + 2;
+function(T) if Compare(T)
+bsearch(seq: [T])
+    require sorted(seq), ensure sorted(seq)
+{}
+//val (a, b) val boh
+extend Rect as Shape {
+    .area(s: *Shape) f32 = 0
+}
+concept(T) Add {
+    add(left: T, right: T) T()
+}
+behaviour Shape {
+    //val c = 10
+}
+//static static mutable const c: a = 10 {val c = 10
+test my {
+    val i: List(u32) = List!(u32).create() static val c = 10
+}
+$
+"\u" '\u12345678'
+'\o' '\o12345\c' 'a "ciao
+'aaaa' '' '
+"ahahah
+"{shshshshsh "{}
+"ahahahaha"str
+"{}ciaooo"
+12.2e
+12f32
+12.3i32
+
+extend A {}
+
+function factorial(n: u32) u128 = if n > 0 { n * factorial(n - 1) } else { 1 };
+
+type £WeekDay range 1..=7
+// il tipo numero prima può assumere solo i seguenti valori
+type Prime range 2 | 3 | 5 | 7 | 11 | 13 | 17 | 19
+// errore: 10 non appartiene al range del tipo `Prime`
+val prime: Prime = 10
+
+function factorial(n: int) int 
+    require !(i < 0) 
+    ensure result > 0 
+= if n > 0 { n * factorial(n - 1) } else { 1 };
+
+val $i = select i {
+    some(value) => {}, none => {},
+    ..=
+    2 
+    | ...
+    | 3 => a
+    [1] =>{}
+}
+
+type(T) if default(T) & clone(T) & print(T)
+vec(hide data: *[T], hide capacity: usize, hide length: usize)
+
+extend(T) vec(T) {
+    const CAPACITY: usize = 64
+    
+    default() vec(T) = vec!(T)(data: allocate(sizeof(T) * CAPACITY) as *[T], capacity: CAPACITY, length: 0)
+
+    destroy(mutable self: *vec(T)) = deallocate(self.data)
+
+    create(n: usize) vec(T)
+        require n < usize.MAX
+    = vec!(T)(data: allocate(sizeof(T) * n) as *[T], capacity: n, length: 0)
+
+    add(mutable self: *vec(T), element: T)
+        invariant self.length < usize.MAX
+    {
+        if self.length == self.capacity {
+            self.capacity *= 2
+            self.data = reallocate(self.data, sizeof(T) * self.capacity)
+        }
+
+        self.data[self.size++] = element
+    }
+
+    print(self: vec(T)) string {
+        mutable val result: string = "[ "
+        for i in 0..(self.length - 1) { result.add("{self.data[i]}, ")  }
+        result.add("{self.data[self.length - 1]} ]")
+        return result
+    }
+}
+
+function main(args: [chars]) 
+{
+    val size = 10
+    mutable val v = vec!(int).create(size)
+    
+    for i: int in 0..size { vec.add(i) }
+
+    println("now my vector is {vec}")
+}
+
+ // prima versione:
+ // 0) i margini sono giustificati
+ // 1) la ragione dell'errore è la prima riga mostrata
+ // 2) eventualmente dopo è stampata la riga con la sostituzione
+ // 3) non viene impiegato nessun simbolo tipo `^` sotto l'errore ma solo il colore rosso
+ //    e il puntatore alla riga
+ You made a f*cking error, c*nt!
+ • /src/file.ns at line 2
+
+ You forgot a damned semicolon! 
+
+ 1 | test my_test {
+ 2 >    val a = 10; val b = 0
+ 3 |    println("a = {}")
+
+ I would suggest inserting a semicolon after `10` to 
+ divide statements that lie on the same line.
+    
+ 1 | test my_test {
+ 2 >    val a = 10 val b = 0
+ 3 |    println("a = {}")
+
+ You made 10 errors so far, 9 left to quitting analyzing
+ your program!
+
+ // seconda versione
+ ---------------------------------------------------
+ >>>>>>> error in /src/file.ns at line 2 <<<<<<<<<<<
+ ---------------------------------------------------
+ You forgot a damned semicolon! 
+
+ 1 | test my_test {
+ 2 >    val a = 10 val b = 0
+ 3 |    println("a = {}")
+
+ I would suggest inserting a semicolon after `10` to 
+ divide statements that lie on the same line.
+    
+ 1 | test my_test {
+ 2 >    val a = 10; val b = 0
+ 3 |    println("a = {}")
+
+ You made 10 errors so far, 9 left to quit analyzing
+ your program!
+ ---------------------------------------------------
+
+ ---------------------------------------------------
+ >>>>>>> error in /src/file.ns at line 2 <<<<<<<<<<<
+ ---------------------------------------------------
+ You cannot add `string` and `u32` types!
+
+ 1 | test my_test {
+ 2 >    mutable val a = "ciao"s + 10
+   |                    ------- ^ --
+ 3 |    println("a = {}")
+
+ I suggest defining addition between these types 
+ inside extend block of `string` or `u32`
+    
+ + | extend u32 {
+ + |    function add(a: string, b: u32) T { ... }
+ + | }
+
+ You made 10 errors so far, 9 left to quit analyzing
+ your program!
+ ---------------------------------------------------
+
+ print-title(title, max-width):
+    pad-left = '>' * (max-width - title - 2) / 2
+    pad-right = '<' * (max-width - title - 2) / 2
+    puts separator
+    puts pad-left + ' ' + title + ' ' + pad-right
+    puts separator
+
+ print-message(message, max-width)
+    line-length = 0
+    for word in message:
+        if line-length + word.length > max-width:
+            put '\n' + word + ' '
+            line-length = word.length + 1
+        else:
+            put word + ' '
+            line-length = line-length + word.length + 1
+
+ pretty-print(diagnostic):
+    def MAX-WIDTH = ...
+    title = "error " + file + " at line " + line
+    (first-line, last-line, line-ranges) = extract-line-ranges(diagnostic)
+    max-width = max-width(first-line, last-line, title, MAX-WIDTH)
+    separator = '-' * max-width
+    print-title(title, max-width, separator)
+    print-message(diagnostic.message, max-width)
+    for line-no in first-line..=last-line:
+        line = file.line(line-no)
+        (highlighted, markers, contains-ranges) = underline(line, line-no, line-ranges)
+        line-prefix = prefix(line-no, contains-ranges)
+        puts line-prefix + line
+        if contains-ranges:
+            empty-prefix = empty-prefix(line-prefix)
+            puts empty-prefix + markers
+    £for fix in diagnostic.fixes:
+        print-message(fix.message)
+        new-line = replacement-line(fix)
+        puts new-line
+
+ // terza versione
+ // oltre il colore l'errore è sottolineato con `^`
+ ---------------------------------------------------
+ >>>>>>> error in /src/file.ns at line 2 <<<<<<<<<<<
+ ---------------------------------------------------
+ You forgot a damned semicolon! 
+
+ 1 | test my_test {
+ 2 >    val a = 10 val b = 0
+   |    ^^^^^^^^^^
+ 3 |    println("a = {}")
+
+ I would suggest inserting a semicolon after `10` to 
+ divide statements that lie on the same line.
+    
+ 1 | test my_test {
+ 2 >    val a = 10; val b = 0
+ 3 |    println("a = {}")
+
+ You made 10 errors so far, 9 left to quit analyzing
+ your program!
+ -----------------------------------------------------
+
+ diagnostic { loc, message, ranges, fixes }
+
+ $
+
+
+hide test my_test {
+    val a = 10;
+    ++a;
+    println("a = {a}")
+}
+
+val choice = select f {
+    ... => skip()
+    record(..., f) => {}
+    boh(..., ..., 1) => {}
+}
+
+val a = (a: 1, b: 3)(c: 1, d: 2)
+val b = ns.core.List!(int)(a: 1, b: 3).a!([1, 2])
+
+val list: List((T, 1 + 1), T, 10 + 1, SIZE ** 2, [1, 2, 3], [int], AMBIGUOS, function(int) bool)
+        = List!(int)(1, 2, 3**4).name!(1 + 2^0, int)(1,function(a: int) bool {})
+
+// second version
+val list: List((T, 1 + 1), T, 10 + 1, SIZE ** 2, [1, 2, 3], [int], AMBIGUOS, function(int) bool)
+        = List!(int)(1, 2, 3**4).name!(1 + 2^0, int)(1,function(a: int) bool {})
+
+extend(N: usize, T) if Default(T) & (Print(T) | Boh(T)) Type(T, N) as You(1+1, T) {
+    type self = Type(T, N)
+    typename(s: self) string {}
+    function(U) f(u: U) {}
+    function(N: usize) name(param: [int: N]) = none
+}
+
+use ns.core.testing
+
+hide function(T, N: usize) if Comparable(T) & Iterable(T) sort(mutable sequence: *array(T, N)) {}
+
+type(T) maybe { some(T), none }
+type(T, N: usize) square = matrix(T, N ** 2, N)
+
+extend string as print {
+    create() string = string(data_: allocate(usize.MAX), capacity: usize.MAX, size: 0)
+    
+    destroy(mutable s: self) {
+        if self.data_ != null { deallocate(self.data_) }
+    }
+    
+    length(a: self) usize {
+        mutable val start = self.data_
+        mutable val count: usize = 0
+        for start < self.pointer + self.size {
+            start = start + wcwdith(start)
+            ++count
+        }
+        count
+    }
+    
+    stringify(b: self) string = self
+
+    append(mutable a: self, c: char) {
+        if self.size + 1 > self.capacity {
+            self.capacity *= 2
+            self.data_ = allocate(self.data_, self.capacity)
+        }
+
+        *((self.data_ + self.size) as *byte) = c
+    }
+}
+
+extend string(T) as print {
+    create() string = string(data_: allocate(usize.MAX), capacity: usize.MAX, size: 0)
+    
+    destroy(mutable a: self) {
+        if self.data_ != null { deallocate(self.data_) }
+    }
+    
+    get(b: self) usize {
+        mutable val start = self.data_
+        mutable val count: usize = 0
+        for start < self.pointer + self.size {
+            start = start + wcwdith(start)
+            ++count
+        }
+        count
+    }
+    
+    stringify(c: self) string = self
+
+    append(mutable d: self, c: char) {
+        if self.size + 1 > self.capacity {
+            self.capacity *= 2
+            self.data_ = allocate(self.data_, self.capacity)
+        }
+
+        *((self.data_ + self.size) as *byte) = c
+    }
+}
+
+use math.sqrt
+
+type Point(x: real, y: real, z: real)
+
+extend Point as Default {
+    default() Point = Point(x: 0, y: 0, z: 0)
+    create(x: real, y: real, z: real) Point = Point(x: x, y: y, z: z)
+    distance(this: self, other: Point) = math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2 + (self.z - other.z) ** 2)
+}
+
+extend Point as Default, Format {
+    default() Point = Point(x: 0, y: 0, z: 0)
+    format(this: Point) string = "Point(x: {this.x}, y: {this.y}, z: {this.z})"
+    origin() Point = default()
+    create(x: real, y: real, z: real) Point = Point(x: x, y: y, z: z)
+    distance(this: Point, that: Point) = math.sqrt((this.x - that.x) ** 2 + (this.y - that.y) ** 2 + (this.z - that.z) ** 2)
+}
+
+val p = {
+    Point.create(3, 4, 6)
+    println("distance between points is {Point.distance(p, Point.origin())}")
+    println("distance between points is {p.distance(Point.origin())}")
+}
+
+// quadratic equation solution
+type(T: Numeric) Solution { null, one(T), two(T, T) }
+
+extend(T) if Numeric(T) Equation {
+    .determinant() int {
+        
+    }
+}
+
+extend(T) Equation as Format {
+    type Self = Equation(T)
+
+    solve(e: Self) Solution {
+        val Δ = e.determinant
+        return if Δ < 0 { null }
+        else if Δ > 0 {
+            val x1 = (-e.b - math.sqrt(Δ)) / (2 * e.a)
+            val x2 = (-e.b + math.sqrt(Δ)) / (2 * e.a)
+            two(x1, x2)
+        }
+        else {
+            one(-e.b / (2 * e.a))
+        }
+    }
+    
+    .determinant(e: Self) T = e.b ** 2 - 4 * e.a * e.c
+
+    format(e: Self) string = "({e.a})*x^2 + ({e.b})*x + ({e.c})"
+}
+
+type string(hide bytes: *[byte], hide size: usize)
+
+extend string {
+    const CAPACITY: usize = usize.MAX
+
+    create() string = string(bytes: [0x0: CAPACITY], size: CAPACITY)
+    
+    destroy(s: string) = deallocate(s.bytes)
+
+    .length(s: string) usize {
+        mutable val index = 0
+        mutable val result = 0
+        for index < s.size {
+            index += wcwidth(bytes[index])
+            ++result
+        }
+        return result
+    }
+
+    .length() usize {
+        mutable val index = 0
+        mutable val result = 0
+        for index < size {
+            index += wcwidth(bytes[index])
+            ++result
+        }
+        return result
+    }
+
+    .length(s: string) usize {
+        mutable val index = 0
+        mutable val result = 0
+        for index < s.size {
+            index += wcwidth(s.bytes[index])
+            ++result
+        }
+        return result
+    }
+
+    add(x: string, y: string) string = "{x}{y}"
+}
+
+test equation_test {
+    val equation = Equation!(real)(a: 1, b: 2, c: 1)
+    
+    select equation.solve() {
+        null => println("equation {equation} has no real solutions")
+        one(x) => println("equation {equation} has two coincidents solutions {x}")
+        two(x1, x2) => println("equation {equation} has two distinct solutions {x1}, {x2}")
+    }
+}
+
+concept(T) Default {
+    default() T
+}
+
+concept(T) Copy {
+    copy(t: T) T
+}
+
+concept(T) Destroy {
+    destroy(mutable t: *T) T
+}
+
+concept(T) Sized {
+    .size(t: T) usize
+}
+
+concept(T) Numeric as Primitive(T) & Add(T) & Sub(T)
+
+type(T, N: usize) if Default(T) & Copy(T) & Destroy(T) array = [T: N]
+
+type(T, N: usize) if Default(X) & Copy(x) & Destroy(x) array = [T: N]
+
+extend(T, N: usize) array(T, N) {
+    default() array(T, N) = [T.default(): N]
+    
+    destroy(mutable a: *array(T, N)) = for mutable elem: *T in a { elem.destroy() }
+    
+    copy(a: array(T, N)) array(T, N) {
+        mutable val result = array!(T, N).default()
+        for i in 0..N { result[i] = a[i] }
+        return result
+    }
+
+    .size(a: array(T, N)) usize = N
+}
+
+behaviour MotorEngine {
+    start(e: *MotorEngine)
+    stop(e: *MotorEngine)
+    downshift(e: *MotorEngine) int
+}
+
+type FerrariEngine
+
+extend FerrariEngine as MotorEngine {
+    start(e: *FerrariEngine) {  }
+    stop(e: *FerrariEngine) {  }
+    downshift(e: *FerrariEngine) int {  }
+}
+
+behaviour Shape {
+    draw(s: *Shape)
+    .perimeter(s: *Shape) real
+}
+
+behaviour Shape {
+    draw(s: *Shape)
+    .perimeter(s: *Shape) real
+}
+
+behaviour Shape {
+    draw(s: *Shape)
+    .perimeter(S: *Shape) real
+}
+
+type Rectangle(base: real, height: real)
+
+type Circle(radius: real)
+
+extend Rectangle as Shape {
+    draw(r: *Rectangle) = println("I am a rectangle")
+    .perimeter(r: *Rectangle) = 2 * (r.base + r.height)
+}
+
+extend Circle as Shape {
+    draw(c: *Circle) = println("I am circle")
+    .perimeter(c: *Circle) = 2 * math.PI * c.radius
+}
+
+function main() {
+    // upcasting
+    val shapes: [*Shape] = [ &Rectangle(height: 10, base: 2), &Circle(radius: 3) ]
+    // shape perimeter is 24
+    // shape perimeter is ...
+    for shape: *Shape in shapes { println("shape perimeter is {shape.perimeter}") }
+}
+
+type(T) if Compare(T) node(value: T, left: own(node(T)), right: own(node(T)))
+
+extend(T) node(T) {
+    leaf(value: T) *node(T) = allocate(node!(T)(value: value, left: null, right: null))
+}
+
+function(T) allocate(value: T) *T {
+    val pointer = malloc(#sizeof(T)) as *T
+    if (pointer as int) == 0 { crash("error: memory allocation failed") }
+    memcpy(pointer as *uint8, &value, #sizeof(T))
+    return pointer
+}
+
+function(T) deallocate(pointer: *T) {
+    free(pointer as *uint8)
+}
+
+type(T) own {
+    null,
+    hide some(*T)
+}
+
+extend(T) own(T) {
+    default() own(T) = own!(T).null
+    create(value: T) own(T) = own!(T).some(allocate(value))
+    destroy(mutable owner: *own(T)) {
+        select owner {
+            some(ptr) => deallocate(ptr)
+        }
+        else {}
+    }
+    reset(mutable owner: *own(T), value: T) {
+        destroy(owner)
+        *owner = create(value)
+    }
+}
+
+function(T) owner(value: T) own(T) = own!(T).create(value)
+
+hide type(T) if Compare(T) node(value: T, left: own(node(T)), right: own(node(T)))
+
+hide extend(T) node(T) {
+    leaf(value: T) own(node(T)) = owner(node!(T)(value: value, left: own(node(T)).null, right: null))
+    insert(root: own(node(T)), value: T) own(node(T)) {
+        if root is some(node) {
+            if value < node.value { 
+                node.left.reset(insert(node.left, value))
+            }
+            else {
+                node.right.reset(insert(node.right, value))
+            }
+        }
+        else {
+            leaf(value);
+        }
+    }
+}
+
+type(T) if Compare(T) btree(hide root: own(node(T)))
+
+extend(T) btree(T) {
+    default() btree(T) = btree(root: own!(node(T)).null)
+    destroy() {}
+    insert(mutable tree: *btree(T), value: T) bool {
+        tree.root = node!(T).insert(tree.root, value)
+    }
+}
+
+function factorial(n: i32) i32 
+    require n >= 0
+{ 
+    if n == 0 { 1 } 
+    else { n * factorial(n - 1) } 
+}
+
+function(T) if Compare(T) binary_search(sequence: [T], key: T) isize 
+    require sorted(sequence)
+{
+    mutable val left: isize = 0
+    mutable val right: isize = 0
+    
+    for left <= right 
+        invariant left >= 0 && right < sequence.size
+    {
+        val mid = (left + right) / 2
+        if sequence[mid] == key { return mid }
+        else if sequence[mid] < key { right = mid - 1 }
+        else { left = mid + 1 }
+    }
+
+    return -1
+}
+/*
+
+variant maybe(T) { some(T), none }
+
+type(T) maybe = some(T) | none
+
+type(T) parametric union(t: T)
+type(T) parametric_alias = union(t: T)
+type(T) parametric = { some(T), none }
+type(T) variant { some(T), none }
+type(T) alias = (t: T)
+type(T) definition(t: T)
+type(const N: usize) int_square_matrix = matrix(int, N, N)
+type u8 @bits(32) range 0..=256
+
+val anonymous = (a: 32, b: 5)
+anonymous.a = 10
+typeof(a) == 'anonymous'
+
+type u32 @bits(32) = range -2**31..=2**31
+type i32 @bits(32) = range 0..(2**32 + 1)
+type natural = u32
+type integer = i32
+type pointer = range 0..(2**32 + 1)
+type bool @bits(8) = variant { true | false }
+
+const null: pointer = 0
+
+function add<simmetric>(ptr: pointer, offset: usize) pointer {
+    return ptr + (offset as pointer)
+}
+
+extend u32 {
+    const MAX: u32 = 2**32
+    const MIN: u32 = 0
+}
+
+behaviour print {
+    stringify(self) string
+}
+
+type string = data(hide data: pointer, hide size: usize, hide capacity: usize)
+
+extern {
+    @cdecl function wcwdith(buffer: pointer) usize
+}
+
+function add<simmetric>(str: &string, c: char) string {
+    mutable val copy = str.clone()
+    copy.append(c)
+    copy
+}
+
+extend string as print {
+    create() string => string(data: allocate(usize.MAX), capacity: usize.MAX, size: 0)
+    
+    destroy(mutable self) {
+        if self.data != null => deallocate(self.data)
+    }
+    
+    get length(self) usize {
+        mutable val start = self.data
+        mutable val count: usize = 0
+        for start < self.pointer + self.size {
+            start = start + wcwdith(start)
+            ++count
+        }
+        count
+    }
+    
+    stringify(self) string => self
+
+    append(mutable self, c: char) {
+        if self.size + 1 > self.capacity {
+            self.capacity *= 2
+            self.data = allocate(self.data, self.capacity)
+        }
+
+        *((self.data + self.size) as &byte) = c
+    }
+}
+
+extend string as print {
+    create() string => string(data: allocate(usize.MAX), capacity: usize.MAX, size: 0)
+    
+    destroy(mutable self) {
+        if self.data != null => deallocate(self.data)
+    }
+    
+    get length(self) usize {
+        mutable val start = self.data
+        mutable val count: usize = 0
+        for start < self.pointer + self.size {
+            start = start + wcwdith(start)
+            ++count
+        }
+        count
+    }
+    
+    stringify(self) string => self
+
+    append(mutable self, c: char) {
+        if self.size + 1 > self.capacity {
+            self.capacity *= 2
+            self.data = allocate(self.data, self.capacity)
+        }
+
+        *((self.data + self.size) as &byte) = c
+    }
+}
+/**
+/******/ LAST ONE$
+type(T: Default, const N: usize) vector = struct(hide ptr: pointer, hide capacity: usize, hide size: usize)
+function(T, const N: usize) front(a: array(T, N)) T => a[0]
+
+val v: vector(int, 10 + 10) = vector!(int, 5*2**2)(ptr: ..., capacity: 10, size: 0)
+val first = front!(int, 1*10)(v)
+
+use test.vector
+
+// first notation
+extend(T: Default) test.vector(T, 0)
+// alternative
+extend(T: Default, const N: usize = 0) test.vector
+// or
+extend(T, const N = 0) test.vector
+
+extend(T: Default, const N: usize) test.vector(T, N) as Default {
+    default() test.vector(T, N) => test.vector!(T, N)(ptr: 0x0, 0, 0)
+    function(const SIZE: usize) create() test.vector(T, N) {
+        // expects SIZE <= N
+        return test.vector!(T, N)(ptr:..., SIZE, 0)
+    }
+    get length(self) usize => self.size
+}
+
+val v: vector(real, 100 + 1) = vector!(real, 50 + 60 + 1).create!(10 + 10)()
+
+/*****/
+
+generics delimiters
+List<int>
+List#<int>#
+List$[int]
+List[int]
+value = List[int, 4] ??
+value = List[int, 4 < 5, (true, false)]
+**
+
+val a: List<int, (SIZE < N), List<a>> = c;/*
+list = List{int}.create{bool, 4}()
+b = 120.3f
+a = '\u1234567891\what'
+
+ébello = 12;$3f; a = c *= "{ahaha"
+c = 'aaaa
+
+static dynamic static const a: T = "ahahahaha;
+
+return 10;
+
+hide test my_test {
+    library invalid;
+    select a {
+        a.. => println()
+        value(a, b, "ciao", 1) {}
+    }
+    for a:int in b {}
+
+    library n
+    use error
+
+    alias boh=ciao;
+
+    data Test(a: 1, c : a)
+
+    const a = 10;
+    alias Bah = int
+    variant Node{a} {
+        UnaryExpr(hide op: Token, expr: @Node, self),
+        BinaryExpr(op: Token, left: @Node, right: @Node),
+        VarDecl(specifiers: ...List{Token}, name: Token, type: Maybe{@Node},value: @Node),
+        Boh(a,b),
+        A
+    }
+
+    use ns.Ahahahah; ciao
+
+    extern {
+        function memcpy(mutable dest: *byte, src: *byte, size: usize, self: int) => {}
+    }
+
+    behaviour A{const N: usize, int:a, bool} {
+        function say_hello() boh
+        not_abstract() => println("hello")
+        third{a, const N: usize}()
+        get size(a: int, self: a) int => self.size  
+        set stupid(a: int, b: boh) int {}
+    }
+
+    function say_hello() boh => f(); println(ciao);
+
+    extend{} A{} as B{} {
+        create() => A()
+        add(mutable self) => self.i += 10
+        get sum(self) {}; function f<B : c, const F: int>(self) int => i
+        hide function f()
+    }
+
+    val a = [int: 10](name: "Me", age: infinity, c: 1..2..=3..(1 >= 1 < 4 > 3 <= false == 10 != 2 == boh))
+
+    extend<T, const N: usize> &Vector<T> as *[Collection<T>] {
+        create(capacity: int) Vector<T> => Vector(size: 0, store: @[T.default() : 100])
+        get size(self) int<> => self.store.length; set size() => a
+    }
+
+    behaviour Empty {}
+
+    extern {}
+
+    variant V {}
+
+    function f<a, b : (Integer | Float) & Bool & Int2 | X, const N : int<i>>
+    (self, mutable a: int, self: t, b: ...int) (natural, &chars) => f() + 10
+    function factorial<>(n: natural, a: function() function() [int: 10]) natural128 {
+       return select n {
+            0 => 1 || 2 || a != b == a >= 0 < a..=b <= 4 | a ^ b && a >> a << a + a as b;
+            1 => n * factorial(n - 1)
+            A.B(1, 2, 4)..2..=3 => function(a: b, mutable a: int) {}
+        }
+    }
+
+    //hide a = b = c + 1 = d;
+    // TODO: return not allowed here
+    return c;
+
+    union Data<a, b : (Integer<i> | a) & Bool & Int2 | X, const N : int<i>>(a: int, self: t, b: ...int, c: 32/*, self*/)
+
+    data A<a>; data B
+
+    val a = 10; b =c
+    a = function(b: int, c: ...int) {
+        a = b;
+        b++;
+        return c + 2;
+    }
+    if true {
+        val b = select f(b, 10)[i].go() >> 2 {
+            _ => println("whatever")
+            [1, _, 2, c] => println("array")
+            ip.v4(addr) => println("ip={addr}")
+        }
+    }
+}
+dynamic val (a,b,c) = "abc"
+static dynamic mutable val (a,b, c): list<int> = (1);
+use ns.algorithm
+/*
+type natural = range 0..=4294967295
+type real = range -2**32..=2**32
+type rational = data(numerator: integer, denominator: integer)
+type bool = variant { true, false }
+type maybe<T> = variant { some(T), none }
+type int_array = [int: 10]
+
+type array<T, const N: natural> = [T: N]
+
+type ListNode<T> = data(val: T, next: maybe<&ListNode>)
+
+type LinkedList<T> = data(head: maybe<&ListNode<T>>, tail: maybe<&ListNode<T>>)
+
+extend<T> LinkedList<T> {
+    create() LinkedList<T> {
+        val empty = &Empty
+        return LinkedList(empty, empty)
+    }
+}
+
+type ListNode<T> = variant {
+    Link(val: T, next: &ListNode),
+    Tail(val: T),
+    Empty
+}
+
+type LinkedList<T> = data(head: &ListNode<T>, tail: &ListNode<T>)
+
+type LinkedList<T> = data(head: ListNode<T>, tail: ListNode<T>)
+
+extend<T> LinkedList<T> {
+    create() LinkedList<T> {
+        val empty = &Empty
+        return LinkedList(empty, empty)
+    }
+}
+
+val array = &[1, 2, 3]
+
+type vector<T> = data(elements: @[T], size: natural)
+
+extend<T> vector<T> {
+    create(n: natural) => vector(elements: @[T.default() : n], size: 0)
+
+    destroy(self) => deallocate(self.data as pointer)
+
+    add(mutable self, value: T) {
+        if 1 + self.size == self.elements.size {
+            self.elements = reallocate(self.elements as pointer, self.elements.size * 2)
+        }
+
+        self.elements[self.size++] = value
+    }
+}
+
+type vector<T> = data(elements: pointer, size: natural)
+
+extend<T> vector<T> {
+    create(n: natural) {
+        val elems = allocate(n * sizeof(T)))
+        for i in 0..n => *(elems + i * sizeof(T)) = T.default()
+        return vector(elements: elems)
+    }
+
+    add(mutable self, value: T) {
+        if 1 + self.size == self.capacity {
+            self.capacity *= 2
+            self.elements = reallocate(self.elements, self.capacity)
+        }
+
+        self.elements[self.size++] = value
+    }
+
+    destroy(mutable self) => deallocate(self.data)
+}
+
+val vec: vector<natural> = vector<natural>.create(10)
+vec.add(10)
+
+range natural 0..=4294967295
+data rational(numerator: integer, denominator: integer)
+variant bool { true, false }
+variant maybe<T> { some(T), none }
+
+return a; = if select 1 ..= 2 ..  ..= 2 < 4 < (5 + 3*s) >= 5 ** 9 * *2 == 2 != 3 && a == b < 3 || false && [].f() == true ||
+4 as &&int as bool*2 as **int -3*4++/67 % "caio" + (1,) - () * (1) ** (1, 3,) << 3 & 4 ^ 3 |
+!--++[a[++1]:[1,function(a:function(a)){}]][1(a:@1,n :&a, c : @["hi"s: ++i])]() ** 2
+[0r].name(1, 3, [])++-- ** --3 ..= 0 > "s".a.a(a:1, b:()) {
+    "ciao" {}
+    1 {}
+    [1, a, "c", 's'] {}
+    Point(x, _, a(1)..1) {}
+    ..=1..2..=3 {}
+    (a, b, 1) | 2 | (3,) {}
+    Shape.Triangle {}
+    _ {}
+}
+else {} {} else if a < b {} else if a {} else {} = c = a + b = f()
+function(a:...[int:(2), bb:a.a) function() ret.e.a.c<b,> {}/*(a, b, c)*/.i]
+//[(a, b, a<1>, 2), 1]
+(1, "ciao", 'a', 33.3r, 1, "{a}"s)
+//@function(a<3>, b.a.c<a, ...int>, *(a, b,&[(): 4], a3)) @function(([():4]), ()) (...a<b<c>, 3>)
+//function ( function(), function(a, b)) [():2]
+
+val a = 10abc;
+val 😡 = 10a
+"ciao {} {emanuel}, io sono {ignoto + { "inside" } {} \e }"str
+"{}"s
+const ϖ π = "3.14
+/* identifiers and labels */ _漢字_is_valid π name var aliasa data d class if rat rational645 rational32 elif truee @label @test 
+/* strings */ "valid" "invalid😡!" "strange\n\t\b\h\v\u12345678\u02" "unterminated\"
+/* chars */ '\u123' '\x19' '\o198' '123' '\cd' ''
+/* numbers booleans */ true 123 0.1e+ 1.23f 1f 1i 1a false
+/* symbols */ +++ + . : , -- === +== -= *****=
+/* single-line comment */ // Hi there
+/* unterminated multi-line comment /* here1
+/** and here2
+/** and here3 😡 */
+ends here.
+
+Algoritmo per stringa interpolata
+start è posizione del primo `"`
+end è posizione dell'ultimo `"`
+start = start + 1
+cur = start
+while cur != end:
+    if cur != '{':
+        beg = cur
+        while cur != '{' && cur != end:
+            ++cur
+        add-segment(beg, cur, LITERAL)
+    else
+        ++cur
+        beg = cur
+        while cur != '}':
+            ++cur
+        add-segment(beg, cur, EXPRESSION)
+        ++cur // skip '}'  
+
+mother fucker
+dick head
+dumb fucker
+dumbass
+idiot
+jerk
+cunt
+prick
+
+
+TYPE        TIME-NO-TOKENS      TIME-TOKENS
+scanner     0.36s               0.50s
+tokenizer   0.36s               0.50s
+
+IDEA: ASSEGNARE AD OGNI NODO DELL'AST UN ID COSI DA POTER STAMPARE SU RICHIESTA IL CODICE SORGENTE
+DI UN DETER:wq
+MINATO NODO DELL'ALBERO SINTATTICO*/

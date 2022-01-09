@@ -1,0 +1,271 @@
+library MyDamnLibrary
+
+use nscore
+
+/**
+function(T) boh(i: T) bool = i > 0
+
+println(s: string) i32
+    require s.size > 0usize
+    ensure result != 0usize
+    invariant result
+{
+    val result = s.size
+    for i in 0..10 
+        invariant boh(i)
+    {
+        1 + "a"
+        i = 2.3
+        println(0.1202034f32)
+    }
+    return result
+}
+
+test my_test {
+    println("10")
+    val result: [*Animal] = [&Elephant(height: 12) as *Animal, &Cat()]
+    result[0] as *Cat
+    for animal in result { println(animal/*.name*/) }
+    val boh = Elephant(height: 10)
+    println = function(s: string) i32 = 0
+    boh = Elephant(height: 12)
+}
+
+test my_second_test {
+    println(1)
+}
+
+hide behaviour Animal {
+    sayHello(self: *Animal) = println("Hello! I am just an animal!")
+    .name(self: *Animal) string;
+    .age(self: *Animal) u32;
+}
+
+type Elephant(height: i32)
+
+extend Elephant as Animal {
+    //sayHello(self: *Elephant) = println("Hello from an elephant")
+    .name(self: *Elephant) string = "ciao"
+    function(U) sum(e: *Elephant, ...n: U) i32 = 10
+}
+
+type Cat
+
+extend Cat as Animal {}
+
+val a = Elephant.sayHello(&Elephant(height: 10))
+val aa = nscore.mine(10)
+
+function(T) sum(...args: T) T {
+    val result = 0
+    for arg in args {  }
+    return result
+}
+
+/**
+// my first concept
+concept(T) Numeric as Print(T) {
+    // funzione
+    add(x: T, y: T) T
+    // funzione
+    subtract(x: T, y: T) T;
+    // proprietà
+    .abs(t: T) T
+}
+
+concept(S) Print {
+    format(s: S) string
+}
+
+type(S) if Numeric(S) Integer(S)
+
+extend(S) Integer(S) {
+    add(x: Integer(S), y: Integer(S)) Integer(S) = Integer!(S)(x.0 + y.0)
+    subtract(x: Integer(S), y: Integer(S)) Integer(S) = Integer!(S)(x.0 - y.0)
+    .abs(t: Integer(S)) Integer(S) = if t.0 < 0 { Integer!(S)(-t.0) } else { t }
+}
+
+function(U) if Numeric(U) sum(a: U, b: U) U = a + B
+
+val c = if MyDamnLibrary.Integer!(i32) {  }
+val result = sum(Integer!(i32)(1), Integer!(i32)(2))
+/**
+function factorial(n: i32) i32 = n * factorial(n - 1)
+
+type(T) Vector(data: *T, size: [T: 3])
+
+extend(T) Vector(T) {
+    type Sub = (T, string)
+    //type ofType = Vector((T))
+}
+
+extend Vector(i32) {
+    const max = 11
+    function(Z, Gamma: usize, A, B, C: usize, D, E, F, R, VT) bastard(self: Vector(i32), param: (*(a: A, b: D) | D, Array(B, C)), tryit: function(E, F) [R], last: Vector(VT).Sub, maybe: [A: C]) [Z: Gamma] = [1: 10]
+}
+
+type None
+type Square(side: f32)
+type Circle(radius: f32)
+type Triangle(f32, f32, f32)
+type Picture(a: Shape, b: Shape, c: [[char]])
+type Shape is None | Square | Circle | Triangle
+
+type(T, N: usize) Array([T: N])
+type(T) ahah = (T, *T)
+
+
+function(A, B: usize) sort(array: Array(*A, B)) {}
+val here2 = sort(Array!(*f32, 2)([1.0, 0.0]))
+
+// must check for already set parameter from explicit list or previous match
+function(T, N: usize) testing(param: [T: N]) T = param
+
+val here = testing([Square(side: 10.0) as Shape, Circle(1.1)] /*as [Shape]*/)
+val variantt: *(a: string, b: u8) | u8 = &"hello"
+val lambda = function() = 10
+val vobj = Vector!(i32)(&1, [1, 2, 3])
+val fff: [i32] = sort!(i32, 1usize)
+val here3: [i32: 10] = vobj.bastard!(i32, 10usize)((variantt, Array!(char, 3)(['a', 'b', 'c'])), function(a: i32, b: f32) [c64] = [a + b * 1i], Vector!(string).Sub("ciao", "bello"), ["b"s, "B"s, "1"s])
+val here4: [i32: 10] = Vector!(i32).bastard!(i32, 10usize)(vobj, (variantt, Array!(char, 3)(['a', 'b', 'c'])), function(a: i32, b: f32) [c64] = [a + b * 1i], Vector!(string).Sub("ciao", "bello"), ["b"s, "B"s, "1"s])
+
+/**
+val ahaha: [Shape] = [None() as Shape, Square(10.1)]
+val p = Picture(Circle(1.0), None(), [['a']])
+
+val mytest = when p {
+    Picture(Triangle(a, ..3.0, ...), None(), [['a', b]]) => 'a',
+    Picture(a: a, b: ...) => { 1 + 2.3f32 }
+    _ => 1
+}
+/**
+val mytest1: string = when p = Picture(Triangle(a, ..3.0, ...), None(), [array, []]) {
+    array[0..(1, 'a', array).0]
+}
+
+/*val mytest = when Vector!(i32).max = 0 | 1..2 | Vector!(i32).max | .. {
+
+}*/
+
+/**
+main() {
+    when shape = Square(a) {
+        // si traduce in
+        // when shape is Square {
+        //     val a: i32 = shape.side
+        // }
+    }
+    when shape = Triangle(1..2, _, a) | Circle(10) {
+        // si traduce in
+        // when shape is Square {
+        //     if shape.0 in 1..2 {
+        //         val a = shape.2
+        //     }
+        // }
+        // o meglio
+        // if shape.tag == Triangle && (shape as Triangle).0 >= 1 && (shape as Triangle).0 < 2 {
+        //     val a = (shape as Triangle).2
+        // }
+    }
+    /**
+    when array = [1, _, element, ...] {
+        // si traduce in
+        // if array.size > 3 && array[0] == 1 {
+        //     val element = array[2]
+        // }
+    }
+
+    when shape is Circle {
+        val s = shape.radius
+    }
+    **/
+}
+/**
+extend(T, N: string) Vector(T) {
+    type Self = Vector(T)
+    type(T1, N1: i32) Test is [T1: N1 + 1]
+    type Natural range 0..
+    const MAX_SIZE = 1024
+    create() Self = ()
+    method(/*self: Self*/a: *Vector(i64)) {}
+    .property(self: Self/*, i: i32*/) {}
+}
+
+extend(T) Vector([T]) {}
+
+extend(U) Vector((a: function(i32) U, b: i32)) {}
+
+extend(S, N: i32) Vector([S: 10])
+
+extend(A, D: i32) Vector((a: A)) {
+    type(A) __A_(d)
+}
+
+type A = Vector((a: function(i32) *i32, b: i32))
+
+/* FIXME */ val fixme = Vector!(i32).property
+val new = Vector!(i32).create()
+val nestedty: i32 = new.Self
+val nestedconst: i32 = new.MAX_SIZE
+val p: i32 = new.property
+val m = Vector!(i32).Test!(string, 12)
+val m2: i32 = when m is [string : 13] { "yes" } else { "no" }
+/**
+type A(A.S, A.D)
+
+extend A { const N = C; const A: A = 10; type S; }
+
+const C = A.N
+const D = opt!(alias).hello
+type alias = i32
+type nil
+type(T) opt is T | nil | *opt(*i32)
+
+extend(T) opt(T) {
+    const hello = T.MAX
+    .empty(self: opt(T), a: i32, self: bool) bool = when self is nil { true } else { false_ }
+    empty() = true
+}
+
+main() {}
+
+type(T, C: i32) Test
+extend(T, D: i32) Test(i32, D) {}
+
+const CON = (1, 'a', [2, 3])
+
+val v = (10, 'a', "ahaha"s)
+
+main(args: [string]) () {
+    type(T, U: i32) Nested = (U, i32)
+    extend(T, U: i32) Nested(T, U) { const IN = OUT }
+    //const OUT = Nested!(i32, 10).IN
+    //if "true" { (1, "ciao") } else { 10 }
+    /*return for "true" { break (1, "ciao"); 1 } else { break (10, "a") }
+    {
+        return 10
+    }*/
+    //for i in [1, 'a', "aa"] { break 'a' } else { 1 }
+    val a: i32 | bool = true
+    when a is i64 {
+        val b: i32 = [10 : /*a*/2];
+        val f = function(a: i32 | bool) char = &[] + 10 > &1i32 + tryit
+    }
+    val AHAHAH = "false"
+    val f = function(a: *i32, b: [f32]) char = if AHAHAH { 'a' } else { "ciao"s }
+    val s: [char] = [f(10, [10.1]) : 1]
+    factorial(10)
+}
+
+const ii: string = "ciaooo"
+const tryit: u128 = u8.BITS;
+
+type(T) TTT
+extend(T) TTT(*T) { const I = 10 }
+// FIXME: siccome TTT(i32) è istanziato senza alcuna dichiarazione
+// all'interno, in realtà dovrebbe "ereditare" i simboli (I)
+// dal template generico TTT(_) !!!
+const SSS = TTT!(i32).I
+const a = opt!(r32).hello
+
+// TODO: FIX EXTEND SCOPE + TRAVERSE EXTEND CLONE FOR CHECKING INSIDE identifier_type_expression

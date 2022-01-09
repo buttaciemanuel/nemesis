@@ -1,0 +1,33 @@
+//library nscore
+library nstest
+
+type byte = u8
+
+extern {
+    malloc(size: usize) *byte
+    memcpy(mutable dest: *byte, src: *byte, size: usize) *byte
+    free(pointer: *byte)
+}
+
+function(T) allocate(n: usize) [T] = [] /* ... */
+
+type String(data: *byte, size: usize)
+
+extend String {
+    from(bytes: chars) String {
+        mutable val data = malloc(bytes.size)
+        memcpy(data, (bytes as [byte]) as *byte, bytes.size)
+        return String(data: data, size: bytes.size)
+    }
+
+    destroy(mutable self: *String) {
+        free(self.data)
+        self.size = 0
+    }
+}
+
+start(args: [chars]) {
+    for arg in args {
+        String.from(arg)
+    }
+}

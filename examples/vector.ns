@@ -1,0 +1,45 @@
+type byte = u8
+
+type(T) Vec(hide _data: [T], hide _size: usize)
+
+extend(T) Vec(T) {
+    create(n: usize) Vec(T) = Vec!(T)(_data: allocate!(T)(2usize * n), _size: 0)
+    
+    destroy(self: *Vec(T)) = free(self._data as *byte)
+
+    clone(self: Vec(T)) Vec(T) {
+        mutable val cloned = Vec!(T).create(self._size)
+        for i in 0..self._size { cloned._data[i] = self._data[i] }
+        cloned
+    }
+
+    .size(self: Vec(T)) usize = self._size
+
+    .capacity(self: Vec(T)) usize = self._data.size
+
+    add(mutable self: *Vec(T), element: T) usize {
+        if self._size == self._data.size { self._data = allocate!(T)(2usize * self._size) }
+        self._data[self._size] = element
+        ++self._size
+    }
+
+    get(self: Vec(T), index: usize) T {
+        if index >= self._size { crash("Vec::get(): index {index} out of range") }
+        self._data[index]
+    }
+
+    foreach(self: Vec(T), action: function(*T) ()) = for i in 0..self._size { action(self._data[i]) }
+}
+
+test vector_test {
+    mutable val v = Vec!(i32).create(10)
+    v.add(10)
+    v.destroy()
+    val copy = v.clone()
+    mutable val ptr = v
+    v.add(10)
+    v.foreach(function(mutable it: *i32) {
+        ++*it
+        ()
+    })
+}

@@ -1,0 +1,38 @@
+library A
+
+type MyFirst(z: string, f: f32)
+
+type MySecond([[i32: 10]: 6])
+
+extend MyFirst {
+    type MySecond(i32, MyFirst)
+    const b = a ** 2
+    const a = 10i16
+    const c = [1f32, (2 ** 4) as f32, 7.6]
+    const d = ("ahahah", "ahah"s, '\u1234', 3.4)
+    method(self: *MyFirst, c: *i32, ...args: chars) char {}
+    .func(self: MyFirst) i32 = 10
+}
+
+extend MyFirst.MySecond {
+    .sum(self: MyFirst.MySecond) f32 = 3.14
+}
+
+type Type is i32 | f32 | [MyFirst.MySecond : 10]
+const global_const = 10
+
+val then = MyFirst(z: "a", f: 0.1).func
+val maybe = (global_const, then, "ok", MyFirst.a, [1, 4])
+val variant: Type = 10.2
+val a, b = MyFirst("ciao", 1.2)
+
+example() i32 = 10
+
+extend Type {
+    .floating(self: Type) bool = true
+}
+
+start(args: [chars]) {
+    //val first = args[0]
+    println("Hey kids, do you like violence?")
+}

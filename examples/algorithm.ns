@@ -1,0 +1,145 @@
+library ns.string
+
+use ns.core
+
+hide val a = --10i
+const tryit = name++
+const SIZE = 10.5e-43i.real + 2i * 10 -2u32
+const size = "this\tis\tmyname\x41\u1F920"
+const character = '\x41'
+const hex_int = 0x4fu128
+const bin_int = ~0b111u32
+const float = '\u1F920' + '\u1F920' + "dai" + "ciao"s + '!' + '\x41'
+const imag = 3i.imaginary
+const strs = "ciao!"s
+const rng = 1..2.4f32
+const tup = (1, 2.3i, 4f32, "ciao"s).5
+const tup = (1, "ciao", (1, 2), [1u8, 2f32, 4i]).size
+const arr = [1, 2.3i, "ciao"][10]
+const sarr = ([1.2f32 : 3u32]).size % (1 - 1*1u64)
+const fract = -10 % 3
+
+type Empty
+type A(10, 0_0, 100, 1000)
+type a(field: 257, i: 0, i: 23, a: [int: 10], j: int, w: u8, b: Boh)
+type u128 = A;
+
+/**
+extern {
+    function memcpy(mutable dest: *[byte], source: *[byte], n: natural) 
+}
+
+const (MAX_SIZE, MAX_CAPACITY): (natural, natural) = (256, 256)
+
+// place a value inside the object
+function(T) place(mutable object: *T, value: T) {
+	mutable val dest = object as *[byte]
+	mutable val src = &value as *[byte]
+	mutable val i = 0
+	for i < dest.size {
+		dest[i] = src[i]
+		i = i + 1
+	}
+}
+
+// UTF-8 encoded mutable string buffer
+type string(hide buffer: *[byte], hide size: natural, hide capacity: natural, length: natural)
+
+extend string {
+	hide allocate(n: natural, value: chars) *[byte] {
+		mutable val buf = *[0x0 : n]
+		mutable val i = 0
+		// test with external linkage
+		{
+            memcpy(buf as *[byte], value.bytes, n)
+		}
+		return buf
+	}
+	
+	hide reallocate(n: natural, old: *[byte]) *[byte] {
+		mutable val buf = []
+		mutable val i = 0
+		for b in old {
+			buf[i] = b
+			i = i + 1
+		}
+		{ trash(old) }
+		return buf
+	}
+
+	hide reallocate(n: natural, old: *byte) *byte {
+		mutable val buf = []
+		mutable val i = 0
+		for b in old {
+			buf[i] = b
+			i = i + 1
+		}
+		{ trash(old) }
+		return buf
+	}
+
+	create(literal: chars) {
+		val max = 2 * literal.bytes.size
+		return string(buffer: allocate(max, literal), size: literal.bytes.size, capacity: max, length: literal.length)
+	}
+
+	clone(self: string) {
+		val copy = *[0x0 : capacity]
+		mutable val i = 0
+		for i < size {
+			copy[i] = buffer[i]
+			i = i + 1
+		}
+		return string(buffer: copy, size: size, capacity: capacity, length: length)
+	}
+
+	destroy(self: string) = trash(buffer)
+
+	add(mutable self: string, character: char) {
+		if size + character.units.size > capacity {
+			capacity = 2 * capacity
+			buffer = reallocate(capacity, buffer)
+		}
+		
+		for b in character.units {
+			buffer[size] = b
+			size = size + 1	
+		}
+
+		length = lenght + 1
+	}
+
+	append(mutable self: string, other: string) {
+		if size + other.size > capacity {
+			capacity = max(2 * capacity, capacity + other.size)
+			buffer = reallocate(capacity, buffer)
+		}
+		
+		for b in other.buffer {
+			buffer[size] = b
+			size = size + 1	
+		}
+
+		length = lenght + other.length
+	}
+}
+
+test testing {
+	val s = string.create("ahahaha")
+	val c = s // clonazione dovuta a clone()
+}
+
+// unique reference to dynamic allocated object
+type(T) Owner(hide ptr: *T)
+
+use ns.testing
+
+behaviour(T) Owner {
+    create(value: T) Owner(T) = Owner!(T)(ptr: *T(value.clone()))
+	
+    destroy(self: Self) = { trash(ptr) }
+
+    .value(self: Self) T = *ptr
+
+    .reference(self: Self) *T = ptr
+}

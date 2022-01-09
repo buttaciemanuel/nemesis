@@ -1,0 +1,872 @@
+<diagram program="umletino" version="14.4.0-SNAPSHOT"><zoom_level>10</zoom_level><help_text></help_text><element><id>UMLClass</id><coordinates><x>192</x><y>829</y><w>130</w><h>160</h></coordinates><panel_attributes>&lt;&lt;struct&gt;&gt;
+*source_location*
+--
++line: unsigned
++column: unsigned
++filename: utf8::span
+--
++source_location(line: unsigned, col: unsigned, file: utf8::span)
++source_location()
++valid(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>472</x><y>829</y><w>260</w><h>320</h></coordinates><panel_attributes>*source_file*
+--
+{innerclass
+&lt;&lt;struct&gt;&gt;
+*buffer*
+--
++data: byte*
++size: int
+--
++buffer(size: int)
++~buffer()
+innerclass}
+-name_: utf8::span
+-buffer_: buffer
+-line_table_: std::vector&lt;utf8::span&gt;
+-handler_: source_handler*
+--
+-source_file(handler: source_handler&amp;, 
+                    name: utf8::span, size: int) 
++name(): utf8::span
++source(): utf8::span
++line(number: unsigned): utf8::span
++range(r: source_range)
++get_source_handler(): source_handler&amp;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>792</x><y>829</y><w>320</w><h>140</h></coordinates><panel_attributes>*source_handler*
+--
+-files_: std::unordered_map&lt;utf8::span, source_file*&gt; 
+--
++source_handler()
++~source_handler()
++load(filename: utf8::span): int
++remove(filename: utf8::span)
++get(filename: utf8::span): source_file&amp;
++sources(): std::unordered_map&lt;utf8::span, source_file*&gt; </panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>741</x><y>1179</y><w>300</w><h>160</h></coordinates><panel_attributes>*diagnostic_publisher*
+--
+-subscribers_: std::set&lt;diagnostic_subscriber*&gt;
+-errors_: unsigned
+-warnings: unsigned
+--
++diagnostic_publisher()
++~diagnostic_publisher()
++attach(subscriber: diagnostic_subscriber&amp;)
++detach(subscriber: diagnostic_subscriber&amp;)
++publish(diag: diagnostic)
++errors(): unsigned
++warnings(): unsigned
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>174</x><y>1209</y><w>260</w><h>690</h></coordinates><panel_attributes>*diagnostic*
+--
+{innerclass
+&lt;&lt;enumeration&gt;&gt;
+*severity*
+--
+none
+error
+warning
+innerclass}
+--
+{innerclass
+*highlighter*
+--
+range_: source_range
+hint_: std::string
+--
+range(): source_range
+hint(): const std::string&amp;
+}
+innerclass}
+--
+{innerclass
+*fixman*
+--
+{innerclass
+&lt;&lt;enumeration&gt;&gt;
+*action*
+innerclass}
+--
++range: source_range
++fix: std::string
++hint: std::string
++action: action
++replacement(rng: source_range, fix: std::string, hint: std::string)
++insertion(rng: source_range, fix: std::string, hint: std::string)
++removal(rng: source_range, hint: std::string)
+innerclass}
+{innerclass
+*builder*
+--
+-diag: diagnostic
+--
++severity(s: severity): builder&amp;
++location(l: source_location): builder&amp;
++message(m: std::string): builder&amp;
++highlight(highlighter: highlighter)
++point(r: source_range): builder&amp;
++underline(r: source_range): builder&amp;
++fix(correction: fixman)
++short(flag: bool)
++source(file: source_file&amp;): builder&amp;
++set_source_handler(handler: source_handler): builder&amp;
++build(): diagnostic
+innerclass}
+-severity_: severity
+-short_: bool
+-location_: source_location
+-messages_: std::vector&lt;std::string&gt;
+-ranges_: std::vector&lt;source_range&gt;
+-underlined_: std::vector&lt;source_range&gt;
+-fixes_: std::vector&lt;fix&gt;
+-source_handler: source_handler*
+-source_: source_file*
+--
++static format(std::string fmt, args...)
++severity(): severity
++short(): bool
++location(): source_location
++messages(): std::vector&lt;std::string&gt;
++ranges(): std::vector&lt;source_range&gt;
++underlined(): std::vector&lt;source_range&gt;
++fixes(): std::vector&lt;fix&gt;
++source(): source*
++get_source_handler(): source_handler&amp;
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>332</x><y>829</y><w>130</w><h>240</h></coordinates><panel_attributes>&lt;&lt;struct&gt;&gt;
+*source_range*
+--
++bline: unsigned
++eline: unsigned
++bcolumn: unsigned
++ecolumn: unsigned
++filename: utf8::span
+--
++source_range(begin: source_location, end: source_location)
++source_range(begin: source_location, width: columns)
++begin(loc: source_location)
++end(loc: source_location)
++begin(): source_location
++end(): source_location</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>184</x><y>979</y><w>50</w><h>250</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;-</panel_attributes><additional_attributes>10;230;30;10</additional_attributes></element><element><id>Relation</id><coordinates><x>334</x><y>1059</y><w>70</w><h>170</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;-
+m2= 0..*</panel_attributes><additional_attributes>10;150;30;10</additional_attributes></element><element><id>Relation</id><coordinates><x>724</x><y>959</y><w>130</w><h>120</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;&lt;-
+m2=0..*</panel_attributes><additional_attributes>110;10;110;90;10;90</additional_attributes></element><element><id>UMLClass</id><coordinates><x>160</x><y>0</y><w>290</w><h>800</h></coordinates><panel_attributes>&lt;&lt;namespace&gt;&gt;
+*utf8*
+--
+{innerclass
+*span*
+{innerclass
+*iterator*
+--
+-ptr_: byte*
+--
+-iterator(ptr: byte*)
++operator++(int): interator
++operator++(): iterator&amp;
++operator+(int): iterator
++operator*(): codepoint
++operator==(other: iterator): bool
++operator!=(other: iterator): bool
++operator&lt;(other: iterator): bool
++operator&gt;(other: iterator): bool
+innerclass}
+--
+{innerclass
+*builder*
+--
+-bytes_: std::vector&lt;byte&gt;
+--
++builder()
++concat(data: CCharType*, size: int)
++cocant(data: CCharType*)
++add(codepoint: c): builder&amp;
++build(): span
+innerclass}
+--
+-units_: byte*
+-size_: int
+-owns_: bool
+--
++span()
++span(other: const span&amp;)
++span(other: span&amp;&amp;)
++span(begin: iterator, end: iterator, owner: bool)
++span(data: CCharType*, size: int, owner: bool)
++span(data: CCharType*: owner: bool)
++~span()
++clear()
++size(): int
++data(): byte*
++cdata(): char*
++subspan(start: int, end: int): span
++subspan(start: iterator, end: iterator): span
++length(): int
++width(): int
++at(index: int): codepoint
++owns(): bool
++operator[](index: int): codepoint
++compare(other: span): int
++operator==(other: span): bool
++begin(): iterator
++end(): iterator
+innerclass}
+--
++width(val: codepoint): int
++encode(value:codepoint, units: byte*): int
++decode(units: byte*): codepoint
++operator&lt;&lt;(stream: T&amp;, span: span): T&amp;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1120</x><y>1113</y><w>310</w><h>60</h></coordinates><panel_attributes>&lt;&lt;interface&gt;&gt;
+/*diagnostic_subscriber*/
+--
++handle(diag: diagnostic)</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1166</x><y>1168</y><w>50</w><h>110</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>24;10;10;90</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1091</x><y>1258</y><w>240</w><h>80</h></coordinates><panel_attributes>*diagnostic_printer*
+--
+-stream_: std::ostream&amp;
+--
++diagnostic_printer(stream: std::ostream&amp;)
++handle(diag: diagnostic)</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1032</x><y>1158</y><w>110</w><h>40</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;-
+m2=0..*</panel_attributes><additional_attributes>10;21;90;15</additional_attributes></element><element><id>UMLClass</id><coordinates><x>480</x><y>290</y><w>330</w><h>440</h></coordinates><panel_attributes>*driver*
+--
+{innerclass
+*options*
+--
+{innerclass
+&lt;&lt;enumeration&gt;&gt;
+*kind*
+--
+tokens
+ast
+help
+innerclass}
+-bits_: unsigned
+--
++is(k: kind): bool
++set(k: kind)
++clear(k: kind)
++raw(): unsigned
+innerclass}
+-exit_code: int
+-options_: options
+-pathname_: utf8::span
+-source_handler: source_handler
+-diagnostic_publisher: diagnostic_publisher
++usage: static const char[]
++help: static const char[]
++description: static const char[]
+--
+-parse_arguments(argc: int, argv: char**)
++driver(argc: int, argv: char**)
++get_options(): options
++pathname(): utf8::span
++get_source_handler(): source_handler&amp;
++get_diagnostic_publisher(): diagnostic_publisher&amp;
++run(): int</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>800</x><y>530</y><w>90</w><h>320</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;&lt;-</panel_attributes><additional_attributes>10;10;70;10;70;300</additional_attributes></element><element><id>UMLClass</id><coordinates><x>180</x><y>1900</y><w>350</w><h>550</h></coordinates><panel_attributes>*token*
+--
+{innerclass
+&lt;&lt;enumeration&gt;&gt;
+*kind*
+--
+...
+innerclass}
+{innerclass
+*builder*
+--
++kind(k: kind): builder&amp;
++lexeme(lex: utf8::span): builder&amp;
++location(loc: source_location): builder&amp;
++eol(flag: bool): builder&amp;
++valid(flag: bool): builder&amp;
++artificial(flag: bool): builder&amp;
++build(): token
+--
+token_: token
+innerclass}
+--
+-kind_: kind
+-lexeme_: utf8::span
+-location_: source_location
++eol: unsigned int : 1
++valid: unsigned int : 1
++artificial: unsigned int : 1
+--
++kind(): kind
++lexeme(): utf8::span
++location(): source_location
++range(): source_range
++end_location(): source_location
++token()
++token(kind: kind, lexeme: utf8::span, location: source_location)
++is(kind: kind): bool
++is_literal(): bool
++is_declarator(): bool
++is_unary_operator(): bool
++is_binary_operator(): bool
++is_assignment_operator(): bool
++is_operator(): bool
++description(): std::string
++operator&lt;&lt;(stream: T&amp;, t: token): T&amp;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>710</x><y>1494</y><w>320</w><h>820</h></coordinates><panel_attributes>*tokenizer*
+--
+{innerclass
+&lt;&lt;struct&gt;&gt;
+*state*
+--
++iter: utf8::span::iterator
++location: source_location
+innerclass}
+-file_: source_file&amp;
+-publisher_: diagnostic_publisher&amp;
+-state_: state
+-start_: state
+-end_: state
+-tokens_: std::list&lt;token&gt;*
+--
+-current(): codepoint
+-next(): codepoint
+-advance()
+-comment(): bool
+-character(): bool
+-string(): bool
+-number(): bool
+-identifier(): bool
+-symbol(): bool
+-whitespace(): bool
+-escape(): bool
+-range(begin: state, end: state): source_range
+-extract(begin: state, end: state): utf8::span
+-interpolation(tokens: std::list&lt;token&gt;&amp;): bool
+-reach_end_of_interpolation(end: state&amp;): bool
+-set_tokens(tokens: std::list&lt;token&gt;*)
+-get_tokens(): std::list&lt;token&gt;*
+-is_underscore(c: codepoint): bool
+-is_letter(c: codepoint): bool
+-is_digit(c: codepoint): bool
+-is_bin_digit(c: codepoint): bool
+-is_oct_digit(c: codepoint): bool
+-is_hex_digit(c: :codepoint): bool
+-is_unicode_identifier_start(c: codepoint): bool
+-is_unicode_identifier_part(c: codepoint): bool
+-is_whitespace(c: codepoint): bool
+-is_newline(c: codepoint): bool
+-is_unicode_character(c: codepoint): bool
+-is_character_quote(c: codepoint): bool
+-is_string_quote(c: codepoint): bool
+-is_symbol(): bool
++tokenizer(file: source_file&amp;, diag: diagnostic_publisher&amp;)
++get_source_file(): source_file&amp;
++get_diagnostic_publisher(): diagnostic_publisher&amp;
++eof(): bool
++eol(): bool
++restore(s: state)
++start(s: state)
++end(s: state)
++tokenize(result: std::list&lt;tokens&gt;&amp;)
++state(): state</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>520</x><y>1573</y><w>220</w><h>430</h></coordinates><panel_attributes>lt=-
+m2=0..*</panel_attributes><additional_attributes>10;410;190;10</additional_attributes></element><element><id>Relation</id><coordinates><x>910</x><y>1333</y><w>30</w><h>180</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;-</panel_attributes><additional_attributes>10;160;10;10</additional_attributes></element><element><id>Relation</id><coordinates><x>460</x><y>1143</y><w>310</w><h>370</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;-</panel_attributes><additional_attributes>290;350;290;270;70;270;12;10</additional_attributes></element><element><id>Relation</id><coordinates><x>390</x><y>960</y><w>440</w><h>270</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;-</panel_attributes><additional_attributes>10;249;420;180;420;10</additional_attributes></element><element><id>Relation</id><coordinates><x>720</x><y>960</y><w>180</w><h>60</h></coordinates><panel_attributes>lt=&lt;&lt;&lt;&lt;-</panel_attributes><additional_attributes>10;40;160;40;160;10</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1400</x><y>1460</y><w>160</w><h>100</h></coordinates><panel_attributes>&lt;&lt;interface&gt;&gt;
+*ast::node*
+--
+~range_: source_range
+--
++accept(visitor: ast::visitor)
++range(): source_range
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1303</x><y>1600</y><w>120</w><h>60</h></coordinates><panel_attributes>&lt;&lt;interface&gt;&gt;
+*type_expression*
+--
+ambiguos(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1243</x><y>1510</y><w>150</w><h>110</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>10;10;130;90</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1473</x><y>1730</y><w>240</w><h>140</h></coordinates><panel_attributes>*identifier_type_expression*
+--
+-path_: ast::path
+-generic_params_: std::vector&lt;expression*&gt;
+--
++identifier_type_expression(path: ast::path, generic_params_: std::vector&lt;type_name*&gt;)
++is_generic(): bool
++generic_parameter_list(): 
+  const std::vector&lt;type_expression*&gt;&amp;
+ambiguos(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1416</x><y>1590</y><w>110</w><h>160</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>10;10;80;30;90;140</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1213</x><y>1730</y><w>250</w><h>130</h></coordinates><panel_attributes>*array_type_expression*
+--
+--
+-element_type_: type_expression*
+-size_: expression*
+--
++array_type_expression(elemty: type*, size: expression*)
++element_type(): type*
++size(): expression*
++sized(): bool
+ambiguos(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1318</x><y>1650</y><w>50</w><h>100</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>30;10;10;80</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1723</x><y>1730</y><w>290</w><h>100</h></coordinates><panel_attributes>*tuple_type_expression*
+--
+-element_types_: std::vector&lt;expression*&gt;
+--
++tuple_type_expression(elemty:  std::vector&lt;type*&gt;)
++element_types(): const std::vector&lt;type_expression*&gt;&amp;
+ambiguos(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1416</x><y>1590</y><w>360</w><h>160</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>10;10;340;20;340;140</additional_attributes></element><element><id>UMLClass</id><coordinates><x>2243</x><y>1740</y><w>210</w><h>100</h></coordinates><panel_attributes>*pointer_type_expression*
+--
+-pointee_type_: type_expression*
+--
++pointer_type_expression(pointee:  type*)
++pointee_type(): type_expression*
+ambiguos(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1416</x><y>1640</y><w>910</w><h>120</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>10;20;890;10;890;100</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1043</x><y>1730</y><w>160</w><h>80</h></coordinates><panel_attributes>*bit_field_type_expression*
+--
+-bits: int
+--
++bit_field_type_expression(bits: int)
++bits(): int
+ambiguos(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1108</x><y>1590</y><w>210</w><h>150</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>190;10;10;20;10;130</additional_attributes></element><element><id>UMLClass</id><coordinates><x>2463</x><y>1740</y><w>380</w><h>120</h></coordinates><panel_attributes>*function_type_expression*
+--
+--
+-return_type_: type_expression*
+-param_types_: std::vector&lt;type_expression*&gt;
+--
++function_type_expression(return_type: type_expression*, param_types: std::vector&lt;type_expression*&gt;)
++return_type(): type_expression*
++parameter_types(): std::vector&lt;type_expression*&gt;
+ambiguos(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1396</x><y>1650</y><w>1170</w><h>110</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>10;10;10;20;1150;20;1150;90</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1600</x><y>1460</y><w>160</w><h>50</h></coordinates><panel_attributes>*path*
+std::vector&lt;token&gt;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1122</x><y>1459</y><w>130</w><h>60</h></coordinates><panel_attributes>&lt;&lt;interface&gt;&gt;
+*expression*
+--
+is_path(): bool
+range(): source_range</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1248</x><y>1480</y><w>170</w><h>30</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>150;10;10;10</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1070</x><y>1889</y><w>260</w><h>100</h></coordinates><panel_attributes>*identifier_expression*
+--
+-identifier_: token
+--
++identifier_expression(id: token)
++identifier(): const token&amp;
++is_self(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1350</x><y>1889</y><w>260</w><h>190</h></coordinates><panel_attributes>*literal_expression*
+--
+-value_: token
+--
++literal_expression(val: token)
++value(): const token&amp;
++is_integer(): bool
++is_real(): bool
++is_imaginary(): bool
++is_character(): bool
++is_boolean(): bool
++is_string_primitive(): bool
++is_string(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1640</x><y>1889</y><w>280</w><h>90</h></coordinates><panel_attributes>*tuple_expression*
+--
+-initializer: std::vector&lt;expression*&gt;
+--
++tuple_expression(init: std::vector&lt;expression*&gt;, range)
++initializer(): std::vector&lt;expression*&gt;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1640</x><y>1999</y><w>280</w><h>80</h></coordinates><panel_attributes>*array_expression*
+--
+-initializer: std::vector&lt;expression*&gt;
+--
++array_expression(init: std::vector&lt;expression*&gt;, range)
++initializer(): std::vector&lt;expression*&gt;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1940</x><y>1889</y><w>400</w><h>110</h></coordinates><panel_attributes>*function_expression*
+--
+-function_type_expr_: type_expression*
+-body_: expression*
+--
++function_expression(parameters: std::vector&lt;declaration*&gt;, return_type: type_expression*, body: expression*, range)
++parameters(): const std::vector&lt;expression*&gt;
++return_type_expr(): type_expression*
++body(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1060</x><y>2089</y><w>360</w><h>80</h></coordinates><panel_attributes>*array_index_expression*
+--
+-array_: expression*
+-index_: expression*
+--
++array_index_expression(array: expression*, index: expression*)
++array(): expression*
++index(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1060</x><y>2179</y><w>360</w><h>80</h></coordinates><panel_attributes>*tuple_index_expression*
+--
+-tuple_: expression*
+-index_: token
+--
++tuple_index_expression(tuple: expression*, index: token)
++tuple(): expression*
++index(): token</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1060</x><y>2269</y><w>260</w><h>110</h></coordinates><panel_attributes>*member_expression*
+--
+-aggregate_: expression*
+-field_: token
+--
++member_expression(aggregate: expression*, field: token)
++aggregate(): expression*
++field(): token</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1060</x><y>2399</y><w>360</w><h>120</h></coordinates><panel_attributes>*call_expression*
+--
+-callee_: expression*
+-args_: std::vector&lt;expression*&gt;
+--
++call_expression(calle: expression*, args: std::vector&lt;expression*&gt;, range)
++callee(): expression*
++arguments(): const std::vector&lt;expression*&gt;&amp;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1060</x><y>2529</y><w>360</w><h>110</h></coordinates><panel_attributes>*data_expression*
+--
+-expr_: expression*
+-initializer_: std::vector&lt;assignment_expression*&gt;
+--
++data_expression(expr: expression*, initializer: std::vector&lt;assignment_expression*&gt;, range)
++expr(): expression*
++initializers(): const std::vector&lt;expression*&gt;&amp;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>180</x><y>2488</y><w>350</w><h>620</h></coordinates><panel_attributes>*parser*
+--
+{innerclass
+&lt;&lt;struct&gt;&gt;
+*syntax_error*
+innerclass}
+{innerclass
+&lt;&lt;struct&gt;&gt;
+*recursion_guard*
+--
+-parser_: parser&amp;
+--
+recursion_guard(parser: parser*)
+~recursion_guard()
+innerclass}
+--
+{innerclass
+*state*
+--
++recursion_depth: unsigned
++iter: tokenizer::tokens::iterator
+innerclass}
+--
+-state_: state
+-tokens_: const tokenizer::tokens&amp;
+-file_: source_file&amp;
+-publisher_: diagnostic_publisher&amp;
+--
+-advance()
+-backtracking(flag: bool)
+-backtrack(state: state)
+-previous(): token
+-next(): token
+-current(): token
+-match(kind: token::kind): bool
+-primary_expression(): expression*
+-postfix_expression(): expression*
+-unary_expression(): expression*
+-pattern_expression(): expression*
+-or_pattern_expression(); expression*
+-range_pattern_expression(): expression*
+-primary_pattern_expression(): expression*
+-..._expr()
+-error(diag: diagnostic)
+-type_expression(): expression*
+-field_type_expression(): expression*
+-name_declaration(): declaration*
+-eof(): bool
++parser(tokens: const tokenizer::tokens&amp;, file: source_file&amp;, publisher: diagnostic_publisher&amp;)
++parse(): expression*
+
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1820</x><y>1460</y><w>100</w><h>60</h></coordinates><panel_attributes>&lt;&lt;interface&gt;&gt;
+*ast::visitor*
+--
+visit(...)</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1970</x><y>1400</y><w>230</w><h>170</h></coordinates><panel_attributes>*ast::printer*
+--
+{innerclass
+*prefix*
+--
+-std::list&lt;bool&gt; next_; 
+--
++push(last: bool)
++top(last: bool)
++pop()
++str(last: bool): std::string
+innerclass}
+-stream_: ostringstream
+-prefix_: prefix
+--
+visit(...)
+
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1910</x><y>1410</y><w>80</w><h>90</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>10;70;60;10</additional_attributes></element><element><id>UMLClass</id><coordinates><x>2863</x><y>1740</y><w>380</w><h>90</h></coordinates><panel_attributes>*variadic_type_expression*
+--
+--
+-type_: expression*
+--
++variadic_type_expression(type: type*)
++parameter_type(): expression*
+ambiguos(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1376</x><y>1650</y><w>1600</w><h>110</h></coordinates><panel_attributes>lt=&lt;&lt;.</panel_attributes><additional_attributes>10;10;10;30;1580;30;1580;90</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>2229</y><w>360</w><h>80</h></coordinates><panel_attributes>*array_sized_expression*
+--
+-value_: expression*
+-size_: expression*
+--
++array_sized_expression(value: expression*, index: expression*)
++value(): expression*
++size(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1060</x><y>2649</y><w>360</w><h>110</h></coordinates><panel_attributes>*postfix_expression*
+--
+-expr_: expression*
+-posfix: token
+--
++postfix_expression(expr: expression*,postfix: token, range)
++expr(): expression*
++expr(): const std::vector&lt;expression*&gt;&amp;
++postfix(): token</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>3240</x><y>2459</y><w>360</w><h>120</h></coordinates><panel_attributes>*name_declaration*
+--
+-name_: token
+-type_expr_: expression*
+--
++name_declaration(range: source_range, name: token, index: expression*)
++name(): token
++type_expression(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>2329</y><w>360</w><h>120</h></coordinates><panel_attributes>*unary_expression*
+--
+-unary_op_: token
+-expr_: expression*
+--
++unary_expression(range: source_range, op: token, expr: expression*)
++unary_operator(): token
++expression(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>2459</y><w>360</w><h>150</h></coordinates><panel_attributes>*binary_expression*
+--
+-binary_op_: token
+-left_: expression*
+-right_: expression*
+--
++unary_expression(range: source_range, op: token, left: expression*, right: expression*)
++binary_operator(): token
++left(): expression*
++right(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>2619</y><w>360</w><h>80</h></coordinates><panel_attributes>*parenthesis_expression*
+--
+-expr_: expression*
+--
++parenthesis_expression(expr: expression*, range)
++expr(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>2719</y><w>360</w><h>120</h></coordinates><panel_attributes>*range_expression*
+--
+-start: expression*
+-end: expression*
+-op: token
+--
++range_expression(op: token, start: expression*, end: expression*, range)
++op(): token
++start(): expression*
++end(): expression*
++inclusive(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>2849</y><w>360</w><h>140</h></coordinates><panel_attributes>*if_expression*
+--
+-condtion_: expression*
+-then_: expression*
+-else_: token
+--
++if_expression(condtion: expression*, then_: expression*, else_: expression*, range)
++condition(): expression*
++then_body(): expression*
++else_body(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>3009</y><w>360</w><h>120</h></coordinates><panel_attributes>*for_range_expression*
+--
+-decl_: declaration*
+-range_: expression*
+-body_: expression*
+-else_body_: expression*
+--
++for_range_expression(decl: declaration*, range: expression*, range)
++item(): declaration*
++range(): expression*
++body(): expression*
++else_body(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>3139</y><w>360</w><h>170</h></coordinates><panel_attributes>*for_loop_expression*
+--
+-decl_: declaration*
+-range_: expression*
+-body_: expression*
+-else_body_: expression*
+--
++for_range_expression(decl: declaration*, range: expression*, range)
++item(): declaration*
++range(): expression*
++body(): expression*
++else_body(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>3319</y><w>360</w><h>140</h></coordinates><panel_attributes>*when_expression*
+--
+-expr_: expression*
+-branches_: std::vector&lt;expression*&gt;
+-else_body_: expression*
+--
++when_expression(expr: expression*, branches: std::vector&lt;branch&gt;, range)
++expression(): expression*
++branches(): std::vector&lt;branch&gt;
++else_body(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>3475</y><w>100</w><h>50</h></coordinates><panel_attributes>literal_pattern
+--
+value: token</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1550</x><y>3475</y><w>130</w><h>50</h></coordinates><panel_attributes>identifier_pattern
+--
+name: token</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1690</x><y>3475</y><w>130</w><h>60</h></coordinates><panel_attributes>record_pattern
+--
+path_: path
+std::vector&lt;pattern*&gt;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>3545</y><w>130</w><h>50</h></coordinates><panel_attributes>array_pattern
+--
+std::vector&lt;pattern*&gt;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1580</x><y>3545</y><w>130</w><h>50</h></coordinates><panel_attributes>tuple_pattern
+--
+std::vector&lt;pattern*&gt;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1720</x><y>3545</y><w>130</w><h>60</h></coordinates><panel_attributes>range_pattern
+--
+start_: pattern*
+end_: pattern*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1440</x><y>3605</y><w>130</w><h>50</h></coordinates><panel_attributes>alternative_pattern
+--
+std::vector&lt;pattern*&gt;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1830</x><y>2100</y><w>100</w><h>40</h></coordinates><panel_attributes>&lt;&lt;interface&gt;&gt;
+*statement*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2130</x><y>2200</y><w>380</w><h>90</h></coordinates><panel_attributes>*assignment_statement*
+--
++assignment_statement(range, op, left: expression*, right: expression*)
++left(): expression*
++right(): expression*
++operator(): expression*
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1830</x><y>2200</y><w>280</w><h>70</h></coordinates><panel_attributes>*expression_statement*
+--
++expression_statement(range, expr: expression*)
++expression(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1880</x><y>2130</y><w>30</w><h>90</h></coordinates><panel_attributes>lt=&lt;.</panel_attributes><additional_attributes>10;10;10;70</additional_attributes></element><element><id>Relation</id><coordinates><x>1920</x><y>2120</y><w>280</w><h>100</h></coordinates><panel_attributes>lt=&lt;.</panel_attributes><additional_attributes>10;10;260;10;260;80</additional_attributes></element><element><id>UMLClass</id><coordinates><x>2530</x><y>2200</y><w>280</w><h>110</h></coordinates><panel_attributes>*jump_statement*
+--
++jump_statement(range, expr: expression*)
++expression(): expression*
++is_return(): bool
++is_continue(): bool
++is_break(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2840</x><y>2200</y><w>160</w><h>110</h></coordinates><panel_attributes>*test_declaration*
+--
+name: token
+block: ast::expression*
+--
+has_name(): bool
+name(): token
+block(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>3070</x><y>2460</y><w>160</w><h>100</h></coordinates><panel_attributes>*test_declaration*
+--
+name: token
+block: ast::expression*
+--
+name(): token
+block(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1920</x><y>2110</y><w>750</w><h>110</h></coordinates><panel_attributes>lt=&lt;.</panel_attributes><additional_attributes>10;10;730;10;730;90</additional_attributes></element><element><id>Relation</id><coordinates><x>1920</x><y>2100</y><w>1020</w><h>120</h></coordinates><panel_attributes>lt=&lt;.</panel_attributes><additional_attributes>10;10;1000;10;1000;100</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1836</x><y>2340</y><w>100</w><h>80</h></coordinates><panel_attributes>&lt;&lt;interface&gt;&gt;
+*declaration*
+--
+is_hidden(): bool
+--
+hidden_</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1806</x><y>2120</y><w>50</w><h>250</h></coordinates><panel_attributes>lt=&lt;.</panel_attributes><additional_attributes>30;10;10;10;10;230;30;230</additional_attributes></element><element><id>UMLClass</id><coordinates><x>1836</x><y>2460</y><w>140</w><h>120</h></coordinates><panel_attributes>*var_declaration*
+--
++is_static(): bool
++is_dynamic(): bool
++is_automatic(): bool
++is_mutable(): bool
++value(): expression*
++name(): token
++type_expression(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>1876</x><y>2410</y><w>30</w><h>70</h></coordinates><panel_attributes>lt=&lt;.</panel_attributes><additional_attributes>10;10;10;50</additional_attributes></element><element><id>UMLClass</id><coordinates><x>2166</x><y>2460</y><w>140</w><h>80</h></coordinates><panel_attributes>*const_declaration*
+--
++value(): expression*
++name(): token
++type_expression(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>1986</x><y>2460</y><w>160</w><h>120</h></coordinates><panel_attributes>*var_tupled_declaration*
+--
++is_static(): bool
++is_dynamic(): bool
++is_automatic(): bool
++is_mutable(): bool
++value(): expression*
++names(): std::vector&lt;token&gt;
++type_expressions(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2316</x><y>2460</y><w>190</w><h>170</h></coordinates><panel_attributes>*function_declaration*
+--
++generic_parameters(): std::vector&lt;ast::declaration*&gt;
++parameters(): std::vector&lt;ast::declaration*&gt;
++name(): token
++return_type_expression(): expression*
++body(): ast::expression*
+--
+danger_: bool
+name_: token
+generics_: std::vector&lt;declaration*&gt;
+params_: declaration*
+return_type_expr : expression*
+body: expression*
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2516</x><y>2540</y><w>240</w><h>60</h></coordinates><panel_attributes>*generic_type_parameter_declaration*
+--
++name(): token
++specifier(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2766</x><y>2460</y><w>300</w><h>170</h></coordinates><panel_attributes>*record_declaration*
+--
++is_struct(): bool
++is_union(): bool
++name(): token
++generic_parameters(): std::vector&lt;ast::declaration*&gt;
++fields(): std::vector&lt;ast::declaration&gt;
+--
+danger_: bool
+name_: token
+union_: bool
+generics_: std::vector&lt;declaration*&gt;
+params_: declaration*
+return_type_expr : expression*
+body: expression*
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>3240</x><y>2589</y><w>360</w><h>120</h></coordinates><panel_attributes>*tuple_field_declaration*
+--
+-index_: unsigned
+-type_expr_: expression*
+--
++tuple_field_declaration(range: source_range, index: unsigned, type_expr: expression*)
++index(): unsigned
++type_expression(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2516</x><y>2470</y><w>240</w><h>60</h></coordinates><panel_attributes>*generic_const_parameter_declaration*
+--
++name(): token
++type_expression(): expression*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2316</x><y>2640</y><w>190</w><h>300</h></coordinates><panel_attributes>*method_declaration*
+--
++generic_parameters(): std::vector&lt;ast::declaration*&gt;
++parameters(): std::vector&lt;ast::declaration*&gt;
++name(): token
++return_type_expression(): expression*
++body(): ast::expression*
++is_mutator(): bool
++is_setter(): bool
++is_getter(): bool
++is_instance_method(): bool
++is_static_method(): bool
+--
+danger_: bool
+declarator_: token
+name_: token
+generics_: std::vector&lt;declaration*&gt;
+params_: declaration*
+return_type_expr : expression*
+body: expression*
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2516</x><y>2610</y><w>240</w><h>90</h></coordinates><panel_attributes>*parameter_declaration*
+--
++name(): token
++type_expression(): expression*
++is_mutable(): bool
++is_self(): bool</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2766</x><y>2640</y><w>310</w><h>160</h></coordinates><panel_attributes>*extend_declaration*
+--
++generic_parameters(): std::vector&lt;ast::declaration*&gt;
++type_expression(): ast::expression*
++behaviour_type_expression(): ast::expression*
++methods(): std::vector&lt;ast::declaration*&gt;
+--
+type_expr_: ast::expression*
+behaviour_type_expr_: ast::expression*
+generics_: std::vector&lt;declaration*&gt;
+methods_: std::vector&lt;ast::declaration*&gt;
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2766</x><y>2810</y><w>310</w><h>130</h></coordinates><panel_attributes>*behaviour_declaration*
+--
++generic_parameters(): std::vector&lt;ast::declaration*&gt;
++name(): token
++methods(): std::vector&lt;ast::declaration*&gt;
+--
+name_: token
+generics_: std::vector&lt;declaration*&gt;
+methods_: std::vector&lt;ast::declaration*&gt;
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2766</x><y>2950</y><w>310</w><h>70</h></coordinates><panel_attributes>*extern_declaration*
+--
++declarations(): std::vector&lt;ast::declaration*&gt;
+--
+declarartions_: std::vector&lt;ast::declaration*&gt;
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2766</x><y>3030</y><w>310</w><h>130</h></coordinates><panel_attributes>*variant_declaration*
+--
++name(): token
++generic_parameters(): std::vector&lt;ast::declaration*&gt;
++kinds(): std::vector&lt;ast::declaration*&gt;
+--
+name_: token
+generics_: std::vector&lt;declaration*&gt;
+kinds_: std::vector&lt;ast::declaration*&gt;
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2766</x><y>3170</y><w>310</w><h>100</h></coordinates><panel_attributes>*alias_declaration*
+--
++name(): token
++type_expression(): expression*
+--
+-name_: token
+-type_expr_: expression*
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2766</x><y>3290</y><w>310</w><h>70</h></coordinates><panel_attributes>*use_declaration*
+--
++path(): path
+--
+-path_: path
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2766</x><y>3370</y><w>310</w><h>70</h></coordinates><panel_attributes>*workspace_declaration*
+--
++path(): path
+--
+-path_: path
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>2766</x><y>3450</y><w>310</w><h>70</h></coordinates><panel_attributes>*source_declaration*
+--
++statements(): std::vector&lt;statement*&gt;
+--
+-stmts_: std::vector&lt;statement*&gt;
+</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>180</x><y>3130</y><w>280</w><h>120</h></coordinates><panel_attributes>**library**
+--
++parent: library*
++children: map&lt;string, library*&gt;
++name: string
++declarations: vector&lt;declaration*&gt;
++sources: map&lt;string, source_unit_declaration*&gt;</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>180</x><y>3340</y><w>540</w><h>120</h></coordinates><panel_attributes>**checker**
+--
++source_handler: source_handler&amp;
++root: map&lt;string, library*&gt;
++scope: environment* // library environment
++file: source_file* // current file
+--
+checker(handler: source_handler&amp;, root: map&lt;string, library*&gt;&amp;, publisher: diagnostic_publisher&amp;)</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>900</x><y>3145</y><w>190</w><h>50</h></coordinates><panel_attributes>**source_unit_declaration**
+--
++library: library*</panel_attributes><additional_attributes></additional_attributes></element><element><id>UMLClass</id><coordinates><x>900</x><y>3260</y><w>190</w><h>50</h></coordinates><panel_attributes>**source_file**
+--
++ast: souce_unit_declaration*</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>450</x><y>3165</y><w>470</w><h>30</h></coordinates><panel_attributes>lt=&lt;&lt;-</panel_attributes><additional_attributes>10;10;450;10</additional_attributes></element><element><id>Relation</id><coordinates><x>280</x><y>3245</y><w>50</w><h>110</h></coordinates><panel_attributes>lt=&lt;-
+m1=0..n</panel_attributes><additional_attributes>10;10;10;90</additional_attributes></element><element><id>Relation</id><coordinates><x>980</x><y>3185</y><w>30</w><h>90</h></coordinates><panel_attributes>lt=&lt;&lt;-</panel_attributes><additional_attributes>10;10;10;70</additional_attributes></element><element><id>UMLClass</id><coordinates><x>900</x><y>3380</y><w>190</w><h>50</h></coordinates><panel_attributes>**source_handler**
+--
++files: map&lt;string, source_file*&gt;</panel_attributes><additional_attributes></additional_attributes></element><element><id>Relation</id><coordinates><x>980</x><y>3305</y><w>50</w><h>90</h></coordinates><panel_attributes>lt=&lt;-
+m1=0..n</panel_attributes><additional_attributes>10;10;10;70</additional_attributes></element><element><id>Relation</id><coordinates><x>710</x><y>3405</y><w>210</w><h>30</h></coordinates><panel_attributes>lt=&lt;&lt;-</panel_attributes><additional_attributes>190;10;10;10</additional_attributes></element><element><id>Relation</id><coordinates><x>670</x><y>3275</y><w>250</w><h>80</h></coordinates><panel_attributes>lt=&lt;&lt;-</panel_attributes><additional_attributes>230;10;10;10;10;60</additional_attributes></element></diagram>
