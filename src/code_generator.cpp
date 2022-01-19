@@ -1788,7 +1788,7 @@ namespace nemesis {
                 break;
             case token::kind::line_line:
                 expr.left()->accept(*this);
-                output_.stream() << " && ";
+                output_.stream() << " || ";
                 expr.right()->accept(*this);
                 break;
             default:
