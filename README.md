@@ -1,5 +1,5 @@
 # Nemesis
-This is language Nemesis official documentation.
+This is the official documentation for Nemesis programming language.
 
 ## Index
 1. [Introduction](#introduction)
