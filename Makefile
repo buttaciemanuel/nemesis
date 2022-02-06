@@ -1,5 +1,5 @@
 CC=clang++
-FLAGS=-std=c++17 -ggdb3 -Wall -pedantic-errors -D __NEMESIS_COLORIZE__=0
+FLAGS=-std=c++17 -ggdb3 -Wall -pedantic-errors -D __NEMESIS_COLORIZE__=1
 INCLUDE=include
 SOURCES=src/driver.cpp src/diagnostic.cpp src/source.cpp src/span.cpp src/token.cpp src/tokenizer.cpp src/ast.cpp src/parser.cpp src/type.cpp src/checker.cpp src/evaluator.cpp src/pattern_matcher.cpp src/type_matcher.cpp src/code_generator.cpp src/pm.cpp
 OBJECTS=build/driver.o build/diagnostic.o build/source.o build/span.o build/token.o build/tokenizer.o build/ast.o build/parser.o build/type.o build/checker.o build/evaluator.o build/pattern_matcher.o build/type_matcher.o build/code_generator.o build/pm.o

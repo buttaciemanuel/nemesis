@@ -2368,35 +2368,34 @@ namespace nemesis {
         switch (expr.condition()->annotation().type->category()) {
         case ast::type::category::range_type:
         {
+            output_.line() << "{\n";
+            auto varname = std::dynamic_pointer_cast<ast::var_declaration>(expr.variable())->name().lexeme().string();
             auto temp = "__i" + std::to_string(std::rand());
-            auto temp2 = "__i" + std::to_string(std::rand());
             output_.line() << "auto " << temp << " = ";
             expr.condition()->accept(*this);
-            output_.stream() << ".begin(), " << temp2 << " = ";
+            output_.stream() << ".max();\n";
+            expr.variable()->accept(*this);
+            output_.stream() << " = ";
             expr.condition()->accept(*this);
-            output_.stream() << ".end();\n";
-            output_.line() << "for (; " << temp;
+            output_.stream() << ".min();\n";
+            output_.line() << "for (; " << varname;
             if (std::dynamic_pointer_cast<ast::range_type>(expr.condition()->annotation().type)->is_open()) output_.stream() << "< ";
             else output_.stream() << " <= ";
-            output_.stream() << temp2 << "; ++" << temp << ") {\n";
-            {
-                struct guard inner(output_);
-                expr.variable()->accept(*this);
-                output_.stream() << " = ";
-                output_.stream() << "*" << temp << ";\n";
-            }
+            output_.stream() << temp << "; ++" << varname << ") {\n";
             emit_in_contracts(expr);
             expr.body()->accept(*this);
             emit_out_contracts(expr);
             output_.line() << "}\n";
             if (expr.else_body()) {
-                output_.line() << "if (" << temp << " >= ";
+                output_.line() << "if (" << varname << " >= ";
                 expr.condition()->accept(*this);
-                output_.stream() << ".end()) {\n";
+                output_.stream() << ".max()) {\n";
                 expr.else_body()->accept(*this);
                 output_.line() << "}\n";
             }
+            output_.line() << "}\n";
             break;
+
         }
         case ast::type::category::array_type:
         {

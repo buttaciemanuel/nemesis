@@ -16,7 +16,7 @@
 #include <vector>
 #include <tuple>
 
-#define __DEVELOPMENT__ 1
+#define __DEVELOPMENT__ 0
 
 struct __char { std::int32_t codepoint; };
 
@@ -347,6 +347,8 @@ catch (std::bad_alloc&) {
 template<typename T> void __deallocate(__slice<T> slice) { delete[] slice.data(); }
 
 template<typename T> constexpr std::size_t __get_size(__slice<T> slice) { return slice.size(); }
+
+template<typename T, std::size_t N> constexpr std::size_t __get_size(T (&array)[N]) { return N; }
 
 template<std::size_t N, typename T> constexpr T& __array_at(T* array, std::size_t index) 
 {
