@@ -737,7 +737,7 @@ namespace nemesis {
 
         auto name = result.str();
 
-        std::replace_if(name.begin(), name.end(), [](char c) { return c == ' ' || c == '.' || c == '(' || c == ')'; }, '_');
+        std::replace_if(name.begin(), name.end(), [](char c) { return c == ' ' || c == '.' || c == '(' || c == ')' || c == '\'' || c == '\"'; }, '_');
         name = std::regex_replace(name, std::regex(", |,"), "_");
         name = std::regex_replace(name, std::regex("\\*"), "P");
         

@@ -3689,6 +3689,7 @@ namespace nemesis {
                 expr.invalid(true);
                 expr.annotation().type = types::unknown();
                 error(expr.range(), diagnostic::format("I cannot find any symbol whose name is `$`, are you sure you have declare it, dumb*ss?", name), oss.str());
+                
             }
         }
 
@@ -12604,6 +12605,7 @@ namespace nemesis {
             expr.annotation().value = maybe_const->second;
             expr.annotation().type = maybe_const->second.type;
             expr.annotation().referencing = maybe_const->first;
+            expr.annotation().isparametric = false;
         }
         else if (maybe_type != types().end()) {
             expr.annotation().istype = true;
