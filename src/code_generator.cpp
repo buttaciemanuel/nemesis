@@ -1029,7 +1029,7 @@ namespace nemesis {
                     output_.line() << emit(decl.annotation().type) << "(";
                     for (auto field : decl.fields()) {
                         if (ifield > 0) output_.stream() << ", "; 
-                        output_.stream() << emit(field->annotation().type, std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string());
+                        output_.stream() << emit(field->annotation().type, fullname(field.get()));
                         ++ifield;
                     }
                     output_.stream() << ");\n";
@@ -1080,11 +1080,15 @@ namespace nemesis {
                 output_.line() << emit(decl.annotation().type) << "::" << emit(decl.annotation().type) << "(";
                 for (auto field : decl.fields()) {
                     if (ifield > 0) output_.stream() << ", "; 
-                    output_.stream() << emit(field->annotation().type, std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string());
+                    output_.stream() << emit(field->annotation().type, fullname(field.get()));
                     ++ifield;
                 }
                 output_.stream() << ") ";
-                if (types::implementors().count(decl.annotation().type) || !decl.fields().empty()) output_.stream() << ": ";
+                ast::pointers<ast::declaration> array_fields;
+                for (auto field : decl.fields()) {
+                    if (field->annotation().type->category() == ast::type::category::array_type) array_fields.push_back(field);
+                }
+                if (types::implementors().count(decl.annotation().type) || array_fields.size() < decl.fields().size()) output_.stream() << ": ";
                 ifield = 0;
                 // initialize vpointers
                 if (types::implementors().count(decl.annotation().type)) {
@@ -1097,12 +1101,25 @@ namespace nemesis {
                 }
                 // initialize fields
                 for (auto field : decl.fields()) {
-                    auto fname = std::static_pointer_cast<ast::field_declaration>(field)->name().lexeme().string();
+                    // if field is array field, then it must initialized into the body
+                    if (field->annotation().type->category() == ast::type::category::array_type) continue;
+                    // otherwise it's initialized inline
+                    auto fname = fullname(field.get());
                     if (ifield > 0) output_.stream() << ", ";
                     output_.stream() << fname << "(" << fname << ")";
                     ++ifield;
                 }
-                output_.stream() << " {}\n";
+                // initialize array fields eventually
+                if (!array_fields.empty()) {
+                    output_.stream() << "{\n";
+                    for (auto field : array_fields) {
+                        auto aname = fullname(field.get());
+                        auto atype = std::dynamic_pointer_cast<ast::array_type>(field->annotation().type);
+                        output_.line() << "std::copy(" << aname << ", " << aname << " + " << atype->size() << ", this->" << aname << ");\n";
+                    }
+                    output_.line() << "}\n";
+                }
+                else output_.stream() << " {}\n";
             }
             // emit destructor, if implemented
             /*if (auto destructor = checker_.is_destructible(decl.annotation().type)) {
