@@ -588,7 +588,7 @@ namespace nemesis {
         std::list<pm::package> manager::download_package(pm::package& package, pm::lock::info& info)
         {
             // central package registry server
-            const std::string server = "http://79.17.215.5:8000"; //"http://192.168.1.66:8000";
+            const std::string server = "http://79.17.215.56:8000"; //"http://192.168.1.66:8000";
             // destination for downloaded zip file
             const std::string destination = std::string(manager::cache_path) + "/" + package.name + ".zip";
             // error code for file system operations

@@ -170,8 +170,10 @@ namespace nemesis {
             for (auto package : packages()) for (auto cpp : package.second.cpp_sources) {
                 if (!cpp->has_type(source_file::filetype::header)) command.append(" ").append(cpp->name().string());
             }
+            // link curl library
+            command.append(" -lcurl");
 
-            //std::cout << "-- " << command << " --\n";
+            // std::cout << "-- " << command << " --\n";
 
             // save exit status
             int status = std::system(command.data());

@@ -1,3 +1,4 @@
+#include <iostream>
 #include <fstream>
 #include <stdexcept>
 
@@ -178,7 +179,7 @@ namespace nemesis {
         
     bool source_handler::load(utf8::span filename)
     {
-        std::ifstream stream(reinterpret_cast<const char*>(filename.data()), std::ios_base::binary);
+        std::ifstream stream(reinterpret_cast<const char*>(filename.string().data()), std::ios_base::binary);
 
         if (!stream.is_open()) return false;
 

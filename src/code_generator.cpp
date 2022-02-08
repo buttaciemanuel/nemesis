@@ -8,6 +8,18 @@
 #include "nemesis/analysis/evaluator.hpp"
 
 namespace nemesis {
+    std::string _encode_name(std::string name)
+    {
+        std::string result;
+
+        for (auto c : name) {
+            if (c == '"') result += '\\';
+            result += c;
+        }
+
+        return result;
+    }
+
     code_generator::code_generator(checker& checker) : checker_(checker), pass_(pass::declare) {}
 
     code_generator::~code_generator() {}
@@ -600,7 +612,7 @@ namespace nemesis {
             output_.stream() << ") {\n";
             // stack activation record for stacktrace
             output_.stream() << "#if __DEVELOPMENT__\n";
-            output_.line() << "__stack_activation_record __record(\"" << lambda->range().filename << "\", \"" << lambda->annotation().type->string() << "\", " << lambda->range().bline << ", " << lambda->range().bcolumn << ");\n";
+            output_.line() << "__stack_activation_record __record(\"" << lambda->range().filename << "\", \"" << _encode_name(lambda->annotation().type->string()) << "\", " << lambda->range().bline << ", " << lambda->range().bcolumn << ");\n";
             output_.stream() << "#endif\n";
             lambda->body()->accept(*this);
             output_.line() << "}\n";
@@ -1375,7 +1387,7 @@ namespace nemesis {
                 struct guard inner(output_);
                 // stack activation record for stacktrace
                 output_.stream() << "#if __DEVELOPMENT__\n";
-                output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+                output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << _encode_name(decl.name().lexeme().string()) << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
                 output_.stream() << "#endif\n";
                 // contracts
                 emit_in_contracts(decl);
@@ -1450,7 +1462,7 @@ namespace nemesis {
                 struct guard inner(output_);
                 // stack activation record for stacktrace
                 output_.stream() << "#if __DEVELOPMENT__\n";
-                output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
+                output_.line() << "__stack_activation_record __record(\"" << decl.name().location().filename << "\", \"" << _encode_name(decl.name().lexeme().string()) << "\", " << decl.name().location().line << ", " << decl.name().location().column << ");\n";
                 output_.stream() << "#endif\n";
                 // contracts
                 emit_in_contracts(decl);
@@ -1505,7 +1517,7 @@ namespace nemesis {
             struct guard inner(output_);
             // stack activation record for stacktrace
             output_.stream() << "#if __DEVELOPMENT__\n";
-            output_.line() << "__stack_activation_record __record(\"" << decl.range().filename << "\", \"" << decl.name().lexeme() << "\", " << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
+            output_.line() << "__stack_activation_record __record(\"" << decl.range().filename << "\", \"" << _encode_name(decl.name().lexeme().string()) << "\", " << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
             output_.stream() << "#endif\n";
             auto start = "_t" + std::to_string(std::rand()), end = "_t" + std::to_string(std::rand());
             output_.line() << "std::printf(\"• running test '" << decl.name().lexeme() << "'...\\n\");\n";
