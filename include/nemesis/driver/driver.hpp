@@ -206,6 +206,10 @@ namespace nemesis {
          */
         void build();
         /**
+         * Executes 'run' command inside current workspace
+         */
+        void run_application();
+        /**
          * Executes `clean` or `test` command inside current workspace
          */
         void clean();

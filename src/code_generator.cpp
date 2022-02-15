@@ -117,7 +117,7 @@ namespace nemesis {
             // adds new cpp file to targets list
             targets.push_back({ target, output_.stream().str() });
 
-            std::cout << "---" << workspace.first << ".cpp---\n" << output_.stream().str() << '\n';
+            //std::cout << "---" << workspace.first << ".cpp---\n" << output_.stream().str() << '\n';
         }
         // test mode, generates a new executable containing tests
         if (checker_.compilation().test()) {
@@ -1324,7 +1324,6 @@ namespace nemesis {
     void code_generator::visit(const ast::var_declaration& decl)
     {
         output_.stream() << "#if __DEVELOPMENT__\n";
-        std::cout << ast::printer().print(decl) << '\n';
         if (decl.annotation().scope->kind() != ast::kind::workspace) output_.line() << "__record.location(" << decl.range().bline << ", " << decl.range().bcolumn << ");\n";
         output_.stream() << "#endif\n";
 
@@ -1843,7 +1842,6 @@ namespace nemesis {
                 auto last = non_generic_name.find_last_of(')');
                 if (first != std::string::npos && last != std::string::npos) non_generic_name.erase(first, last);
                 // test name against builtin functions
-                std::cout << expr.identifier() << '\n';
                 if (non_generic_name == "core.allocate") output_.stream() << "__allocate<" << emit(expr.generics().front()->annotation().type) << ">";
                 else if (non_generic_name == "core.deallocate") output_.stream() << "__deallocate";
                 else if (non_generic_name == "core.free") output_.stream() << "__free";

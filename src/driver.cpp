@@ -150,7 +150,6 @@ namespace nemesis {
             case command::initialize:
             case command::build:
             case command::clean:
-            case command::run:
             case command::test:
                 if (count > 0) {
                     error("this command does not expect arguments, you gave `$`, idiot.", count);
@@ -168,6 +167,8 @@ namespace nemesis {
                     error("this command expects `2` arguments, you gave `$`, idiot.", count);
                     exit_code_ = impl::exit::failure;
                 }
+                break;
+            case command::run:
                 break;
         }
     }
@@ -199,6 +200,7 @@ namespace nemesis {
         // command has been invoked correctly so it is executed
         else if (command_ == command::initialize) init();
         else if (command_ == command::build || command_ == command::test) build();
+        else if (command_ == command::run) run_application();
         else if (command_ == command::clean) clean();
         else if (command_ == command::add) add();
         else if (command_ == command::remove) remove();
@@ -358,6 +360,20 @@ namespace nemesis {
         auto compilation = manager.build_compilation_chain(lock);
         // compile sources following compilation chain
         compile(compilation);
+    }
+
+    void driver::run_application()
+    {
+        build();
+        // exit on error
+        if (exit_code_ == impl::exit::failure) return;
+        // create run command
+        std::string command = "./" + std::string(compilation::executable_name);
+        // appends arguments
+        for (auto arg : arguments_) command += " " + std::string(arg);
+        // execute file
+        if (system(command.data()) < 0) exit_code_ = impl::exit::failure;
+        else exit_code_ = impl::exit::success;
     }
 
     void driver::clean()

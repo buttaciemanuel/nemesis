@@ -18,6 +18,10 @@ namespace nemesis {
     class compilation {
     public:
         /**
+         * Default name of executable file
+         */
+        static constexpr const char executable_name[] = "application";
+        /**
          * List of source file
          */
         using sources = std::list<source_file*>;
@@ -147,7 +151,7 @@ namespace nemesis {
         bool build(std::list<target> targets) const
         {
             // name of executable file
-            std::string executable = "application";
+            std::string executable = compilation::executable_name;
             // C++17 is used as default standard
             // adds builtin file
             std::string command = "g++ -std=c++17 -lm -ggdb3";
